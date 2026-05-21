@@ -16,19 +16,30 @@ from .video_assembler import assemble_movie
 from .workflow_builder import export_scene_workflows, try_submit_scene_workflows
 
 
-def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base: Path, output_name: str, width: int, height: int) -> str:
+def _upscale_source_image(image: Image.Image, mode: str) -> Tuple[Image.Image, float, str]:
+    normalized = str(mode or "off").lower().strip()
+    factors = {"off": 1, "none": 1, "lanczos_2x": 2, "lanczos_4x": 4}
+    factor = factors.get(normalized, 1)
+    if factor <= 1:
+        return image, 1.0, "startframe upscale disabled"
+    upscaled = image.resize((image.width * factor, image.height * factor), Image.Resampling.LANCZOS)
+    return upscaled, float(factor), f"startframe source upscaled with {normalized}: {image.width}x{image.height} -> {upscaled.width}x{upscaled.height}"
+
+
+def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base: Path, output_name: str, width: int, height: int, upscale_mode: str = "off") -> str:
     if storyboard_image is None:
         return "No storyboard image connected to orchestrator first_frame_image; start frames were not exported."
-    pil = image_to_pil(storyboard_image)
+    original = image_to_pil(storyboard_image)
+    pil, bbox_scale, upscale_report = _upscale_source_image(original, upscale_mode)
     frames_dir = ensure_dir(base / "frames")
     input_root = ensure_dir(comfy_input_dir() / "storyboard2movie" / output_name)
-    reports = []
+    reports = [upscale_report]
     for idx, scene in enumerate(plan.get("scenes", []), start=1):
         bbox = scene.get("source_panel_bbox")
         if not bbox or len(bbox) != 4:
             reports.append(f"scene_{idx:03d}: missing source_panel_bbox")
             continue
-        x0, y0, x1, y1 = [int(v) for v in bbox]
+        x0, y0, x1, y1 = [int(round(float(v) * bbox_scale)) for v in bbox]
         x0 = max(0, min(pil.width - 1, x0))
         y0 = max(0, min(pil.height - 1, y0))
         x1 = max(x0 + 1, min(pil.width, x1))
@@ -45,9 +56,12 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
         scene["start_frame_input_name"] = rel_name
         reports.append(f"scene_{idx:03d}: {rel_name}")
 
+    plan.setdefault("project", {})["startframe_upscale_mode"] = upscale_mode
+    plan.setdefault("project", {})["startframe_upscale_factor"] = bbox_scale
+
     ref_bbox = plan.get("project", {}).get("character_reference_bbox")
     if ref_bbox and len(ref_bbox) == 4:
-        x0, y0, x1, y1 = [int(v) for v in ref_bbox]
+        x0, y0, x1, y1 = [int(round(float(v) * bbox_scale)) for v in ref_bbox]
         x0 = max(0, min(pil.width - 1, x0))
         y0 = max(0, min(pil.height - 1, y0))
         x1 = max(x0 + 1, min(pil.width, x1))
@@ -160,6 +174,7 @@ class LTXStoryboardMovieOrchestrator:
                 "enable_subtitles": ("BOOLEAN", {"default": False}),
                 "enable_intermediate_exports": ("BOOLEAN", {"default": True}),
                 "keep_temp_files": ("BOOLEAN", {"default": False}),
+                "startframe_upscale_mode": (["preset", "off", "lanczos_2x", "lanczos_4x"], {"default": "preset"}),
             },
             "optional": {"first_frame_image": ("IMAGE",)},
         }
@@ -170,7 +185,7 @@ class LTXStoryboardMovieOrchestrator:
     CATEGORY = "Storyboard2Movie"
     OUTPUT_NODE = True
 
-    def run(self, enhanced_storyboard_plan_json: str, output_name: str, seed: int, fps: int, target_width: int, target_height: int, quality_mode: str, enable_audio: bool, enable_voiceover: bool, enable_subtitles: bool, enable_intermediate_exports: bool, keep_temp_files: bool, first_frame_image: Any = None) -> Tuple[str, str, str, str, str, str]:
+    def run(self, enhanced_storyboard_plan_json: str, output_name: str, seed: int, fps: int, target_width: int, target_height: int, quality_mode: str, enable_audio: bool, enable_voiceover: bool, enable_subtitles: bool, enable_intermediate_exports: bool, keep_temp_files: bool, startframe_upscale_mode: str = "preset", first_frame_image: Any = None) -> Tuple[str, str, str, str, str, str]:
         plan = parse_json_string(enhanced_storyboard_plan_json)
         preset = QUALITY_PRESETS.get(quality_mode, QUALITY_PRESETS["4060ti_safe"])
         plan = clamp_scene_durations(plan, float(preset["max_scene_seconds"]))
@@ -187,12 +202,14 @@ class LTXStoryboardMovieOrchestrator:
         project["resolution"] = {"width": int(target_width), "height": int(target_height)}
         project["quality_mode"] = quality_mode
         project["output_name"] = output_name
+        if startframe_upscale_mode == "preset":
+            startframe_upscale_mode = str(preset.get("startframe_upscale_mode", "off"))
         base = project_dir(output_name)
         scenes_dir = ensure_dir(base / "scenes")
         workflows_dir = ensure_dir(base / "workflows")
         audio_dir = ensure_dir(base / "audio")
         final_dir = ensure_dir(base / "final")
-        frame_report = _export_scene_start_frames(plan, first_frame_image, base, output_name, int(target_width), int(target_height))
+        frame_report = _export_scene_start_frames(plan, first_frame_image, base, output_name, int(target_width), int(target_height), startframe_upscale_mode)
         expected_scene_paths = [str(scenes_dir / f"scene_{int(s.get('id', i)):03d}.mp4") for i, s in enumerate(plan.get("scenes", []), start=1)]
         plan["expected_scene_video_paths"] = expected_scene_paths
         workflow_paths, workflow_report = export_scene_workflows(plan, workflows_dir, int(seed), int(target_width), int(target_height), int(fps))

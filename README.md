@@ -67,6 +67,7 @@ Use `quality_mode = 4060ti_safe` first:
 - Fixed 4:5 editorial storyboard sheets use `640x800` in `4060ti_safe`.
 - Generated scene workflows use `text_encoder_mode = native_ltxv_cpu` by default. This uses ComfyUI's native LTXV `DualCLIPLoader` on CPU with the fp4 mixed Gemma file and LTX text projection, avoiding the full Gemma loader's 16GB VRAM OOM.
 - If the fixed 4:5 sheet contains landscape storyboard frames, the scene render aspect is derived from the frame panels. Typical `4060ti_safe` scene clips use `640x480` or `768x432` instead of upscaling tiny storyboard panels to 1024-wide.
+- `startframe_upscale_mode = preset` uses `lanczos_2x` for `4060ti_safe` and `balanced`, and `lanczos_4x` for `high_quality`. The analyzer still reads the original storyboard, while cropped LTX start frames are created from the upscaled source image.
 
 ## Recommended Storyboard Format
 
@@ -90,7 +91,8 @@ If CUDA runs out of memory, reduce resolution, reduce frames/duration, close oth
 3. Connect the analyzer JSON to `Storyboard Scene Prompt Builder`.
 4. Connect the enhanced JSON to `LTX Storyboard Movie Orchestrator`.
 5. Set `quality_mode = 4060ti_safe`.
-6. Press Queue.
+6. Keep `startframe_upscale_mode = preset` for better cropped shot frames.
+7. Press Queue.
 
 You can also import `workflows/storyboard2movie_oneclick_ltx23.json`. This graph is pre-wired:
 

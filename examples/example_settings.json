@@ -3,6 +3,7 @@
   "fps": 24,
   "target_width": 576,
   "target_height": 1024,
+  "startframe_upscale_mode": "preset",
   "max_scene_seconds": 4.0,
   "comfyui_server_url": "http://127.0.0.1:666",
   "models_root": "N:/KI_Daten/models",
