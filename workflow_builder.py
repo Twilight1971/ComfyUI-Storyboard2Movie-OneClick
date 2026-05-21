@@ -106,11 +106,12 @@ def _remove_links(workflow: Dict[str, Any], link_ids: List[int]) -> None:
                 out["links"] = [x for x in links if x not in remove]
 
 
-def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str) -> None:
-    """Fallback when Gemma folder with tokenizer.model is missing.
+def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str, reason: str = "checkpoint_clip") -> None:
+    """Use the checkpoint CLIP path instead of the Gemma 12B text encoder.
 
     This bypasses the Gemma prompt enhancer/loader and connects the CLIP output
-    from CheckpointLoaderSimple to CLIPTextEncode directly.
+    from CheckpointLoaderSimple to CLIPTextEncode directly. It is the default
+    path for 16GB GPUs, where Gemma 12B can OOM before video sampling starts.
     """
     # Remove Gemma loader/enhancer links:
     # 13924: Gemma CLIP -> CLIPTextEncode, 13925: enhancer -> CLIPTextEncode text,
@@ -129,8 +130,9 @@ def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str) -> 
         if len(outputs) > 1:
             links = outputs[1].get("links")
             outputs[1]["links"] = (links if isinstance(links, list) else []) + [200001]
-    workflow.setdefault("links", []).append([200001, 5176, 1, 5174, 0, "CLIP"])
-    workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "checkpoint_clip_fallback_no_gemma_tokenizer"
+    if not any(int(link[0]) == 200001 for link in workflow.get("links", [])):
+        workflow.setdefault("links", []).append([200001, 5176, 1, 5174, 0, "CLIP"])
+    workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = reason
 
 
 def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
@@ -157,18 +159,26 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
 
     checkpoint = mapping.get("checkpoint")
     audio_vae = mapping.get("audio_vae", checkpoint)
+    text_encoder_mode = str(mapping.get("text_encoder_mode", "checkpoint_clip")).lower().strip()
     gemma_text_encoder = mapping.get("gemma_text_encoder")
     gemma_connector = mapping.get("gemma_connector") or checkpoint
+    gemma_max_length = int(mapping.get("gemma_max_length", 512))
     latent_upscaler = mapping.get("latent_upscaler")
     if checkpoint:
         _patch_first_widget(workflow, 5176, checkpoint)
     if audio_vae:
         _patch_first_widget(workflow, 5188, audio_vae)
     tokenizer_root = _find_tokenizer_root()
-    if tokenizer_root and (gemma_text_encoder or gemma_connector):
-        _patch_node(workflow, 5178, [gemma_text_encoder or "", gemma_connector or "", 1024])
+    quality_mode = str(project.get("quality_mode", "4060ti_safe")).lower()
+    use_gemma = text_encoder_mode in {"gemma", "gemma_12b", "gemma12b"}
+    if use_gemma and tokenizer_root and (gemma_text_encoder or gemma_connector):
+        _patch_node(workflow, 5178, [gemma_text_encoder or "", gemma_connector or "", gemma_max_length])
+        workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "gemma"
+    elif use_gemma and not tokenizer_root:
+        _configure_direct_checkpoint_clip(workflow, prompt, "checkpoint_clip_fallback_no_gemma_tokenizer")
     else:
-        _configure_direct_checkpoint_clip(workflow, prompt)
+        reason = "checkpoint_clip_4060ti_safe" if quality_mode == "4060ti_safe" else "checkpoint_clip"
+        _configure_direct_checkpoint_clip(workflow, prompt, reason)
     if latent_upscaler:
         _patch_first_widget(workflow, 5210, latent_upscaler)
 

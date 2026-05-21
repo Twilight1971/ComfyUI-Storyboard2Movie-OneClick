@@ -65,6 +65,7 @@ Use `quality_mode = 4060ti_safe` first:
 - Split a 12-second storyboard into multiple short clips instead of one long generation.
 - Enable fp16/bf16/model offload in your LTXVideo template where supported.
 - Fixed 4:5 editorial storyboard sheets use `640x800` in `4060ti_safe`.
+- Generated scene workflows use `text_encoder_mode = checkpoint_clip` by default. The full Gemma 3 12B text encoder is installed-compatible, but it can exceed 16GB VRAM during `CLIPTextEncode`.
 
 ## Recommended Storyboard Format
 
@@ -143,12 +144,31 @@ Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V di
 
 For advanced automation, create `ltx_node_mapping.json` next to `config.py` or point `STORYBOARD2MOVIE_LTX_MAPPING` to a mapping file. The code is structured so this can be replaced with a concrete template generator for your exact LTXVideo installation.
 
+Default 16GB-safe mapping:
+
+```json
+{
+  "text_encoder_mode": "checkpoint_clip"
+}
+```
+
+To force the full Gemma loader on a larger GPU, set:
+
+```json
+{
+  "text_encoder_mode": "gemma",
+  "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
+  "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",
+  "gemma_max_length": 512
+}
+```
+
 ## Troubleshooting
 
 - Missing FFmpeg: install FFmpeg and restart ComfyUI. Audio and assembly need it.
 - Missing OCR: install `pytesseract` or `easyocr`; otherwise the analyzer uses image layout heuristics.
 - Missing LTXVideo nodes: the package still creates plans and scene workflow JSON files, but you must install LTXVideo to generate actual clips.
-- CUDA OOM: use `4060ti_safe`, shorten scene durations, lower resolution, and avoid long single generations.
+- CUDA OOM: use `4060ti_safe`, shorten scene durations, lower resolution, render one scene at a time, and keep `text_encoder_mode = checkpoint_clip` on 16GB GPUs.
 - Bad storyboard parsing: edit `storyboard_plan_final.json` manually, then feed it into `Storyboard Scene Prompt Builder`.
 - Empty final video path: expected scene clips do not exist yet. Render them first, then assemble.
 
