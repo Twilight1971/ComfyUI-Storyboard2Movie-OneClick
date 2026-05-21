@@ -76,6 +76,15 @@ If CUDA runs out of memory, reduce resolution, reduce frames/duration, close oth
 5. Set `quality_mode = 4060ti_safe`.
 6. Press Queue.
 
+You can also import `workflows/storyboard2movie_oneclick_ltx23.json`. This graph is pre-wired:
+
+```text
+Load Image -> Storyboard Image Analyzer -> Storyboard Scene Prompt Builder -> LTX Storyboard Movie Orchestrator
+                                                `-> Storyboard Audio Builder -> Storyboard Movie Assembler
+```
+
+The first run is expected to create the plan, prompt list, audio/SRT placeholders, and per-scene LTX workflow JSON files. The final MP4 can only be assembled after the generated LTX scene workflows have been rendered into the expected `scene_001.mp4`, `scene_002.mp4`, etc. files.
+
 The orchestrator writes:
 
 ```text

@@ -52,7 +52,7 @@ class StoryboardScenePromptBuilder:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "storyboard_plan_json": ("STRING", {"multiline": True}),
+                "storyboard_plan_json": ("STRING", {"multiline": True, "forceInput": True}),
                 "global_style": ("STRING", {"default": "cinematic, coherent motion, realistic lighting"}),
                 "prompt_strength": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "keep_character_consistency": ("BOOLEAN", {"default": True}),
@@ -77,7 +77,7 @@ class LTXStoryboardMovieOrchestrator:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "enhanced_storyboard_plan_json": ("STRING", {"multiline": True}),
+                "enhanced_storyboard_plan_json": ("STRING", {"multiline": True, "forceInput": True}),
                 "output_name": ("STRING", {"default": "storyboard_movie"}),
                 "seed": ("INT", {"default": 12345, "min": 0, "max": 2**31 - 1}),
                 "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
@@ -93,12 +93,13 @@ class LTXStoryboardMovieOrchestrator:
             "optional": {"first_frame_image": ("IMAGE",)},
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("final_video_path", "final_plan_json", "render_report")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("final_video_path", "final_plan_json", "scene_video_paths_json", "audio_mix_path", "srt_path", "render_report")
     FUNCTION = "run"
     CATEGORY = "Storyboard2Movie"
+    OUTPUT_NODE = True
 
-    def run(self, enhanced_storyboard_plan_json: str, output_name: str, seed: int, fps: int, target_width: int, target_height: int, quality_mode: str, enable_audio: bool, enable_voiceover: bool, enable_subtitles: bool, enable_intermediate_exports: bool, keep_temp_files: bool, first_frame_image: Any = None) -> Tuple[str, str, str]:
+    def run(self, enhanced_storyboard_plan_json: str, output_name: str, seed: int, fps: int, target_width: int, target_height: int, quality_mode: str, enable_audio: bool, enable_voiceover: bool, enable_subtitles: bool, enable_intermediate_exports: bool, keep_temp_files: bool, first_frame_image: Any = None) -> Tuple[str, str, str, str, str, str]:
         plan = parse_json_string(enhanced_storyboard_plan_json)
         preset = QUALITY_PRESETS.get(quality_mode, QUALITY_PRESETS["4060ti_safe"])
         plan = clamp_scene_durations(plan, float(preset["max_scene_seconds"]))
@@ -138,7 +139,7 @@ class LTXStoryboardMovieOrchestrator:
             "If final_video_path is empty, render the generated LTX workflows into the expected scene clip paths and rerun the assembler/orchestrator.",
         ])
         (final_dir / "render_report.txt").write_text(report, encoding="utf-8")
-        return assembled, safe_json_dumps(plan), report
+        return assembled, safe_json_dumps(plan), scene_paths_json, audio_path, srt_path, report
 
 
 class StoryboardAudioBuilder:
@@ -146,7 +147,7 @@ class StoryboardAudioBuilder:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "storyboard_plan_json": ("STRING", {"multiline": True}),
+                "storyboard_plan_json": ("STRING", {"multiline": True, "forceInput": True}),
                 "enable_music": ("BOOLEAN", {"default": True}),
                 "enable_sfx": ("BOOLEAN", {"default": True}),
                 "enable_voiceover": ("BOOLEAN", {"default": True}),
@@ -172,7 +173,7 @@ class StoryboardMovieAssembler:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "scene_video_paths_json": ("STRING", {"multiline": True}),
+                "scene_video_paths_json": ("STRING", {"multiline": True, "forceInput": True}),
                 "output_name": ("STRING", {"default": "storyboard_movie_final"}),
                 "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
                 "target_width": ("INT", {"default": 576, "min": 64, "max": 4096, "step": 8}),
@@ -181,8 +182,8 @@ class StoryboardMovieAssembler:
                 "burn_subtitles": ("BOOLEAN", {"default": False}),
             },
             "optional": {
-                "audio_mix_path": ("STRING", {"default": ""}),
-                "srt_path": ("STRING", {"default": ""}),
+                "audio_mix_path": ("STRING", {"default": "", "forceInput": True}),
+                "srt_path": ("STRING", {"default": "", "forceInput": True}),
             },
         }
 
@@ -190,6 +191,7 @@ class StoryboardMovieAssembler:
     RETURN_NAMES = ("final_video_path", "assembly_report")
     FUNCTION = "assemble"
     CATEGORY = "Storyboard2Movie"
+    OUTPUT_NODE = True
 
     def assemble(self, scene_video_paths_json: str, output_name: str, fps: int, target_width: int, target_height: int, transition_mode: str, burn_subtitles: bool, audio_mix_path: str = "", srt_path: str = "") -> Tuple[str, str]:
         final_path = project_dir("storyboard_movie") / "final" / f"{output_name}.mp4"
