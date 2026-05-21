@@ -20,7 +20,7 @@
     },
     {
       "id": 2,
-      "type": "Storyboard Image Analyzer",
+      "type": "StoryboardImageAnalyzer",
       "pos": [420, 40],
       "size": [390, 300],
       "flags": {},
@@ -40,7 +40,7 @@
     },
     {
       "id": 3,
-      "type": "Storyboard Scene Prompt Builder",
+      "type": "StoryboardScenePromptBuilder",
       "pos": [880, 40],
       "size": [410, 260],
       "flags": {},
@@ -58,7 +58,7 @@
     },
     {
       "id": 4,
-      "type": "LTX Storyboard Movie Orchestrator",
+      "type": "LTXStoryboardMovieOrchestrator",
       "pos": [1360, 40],
       "size": [460, 360],
       "flags": {},
@@ -80,7 +80,7 @@
     },
     {
       "id": 5,
-      "type": "Storyboard Audio Builder",
+      "type": "StoryboardAudioBuilder",
       "pos": [880, 360],
       "size": [410, 245],
       "flags": {},
@@ -99,7 +99,7 @@
     },
     {
       "id": 6,
-      "type": "Storyboard Movie Assembler",
+      "type": "StoryboardMovieAssembler",
       "pos": [1360, 460],
       "size": [460, 260],
       "flags": {},
