@@ -34,19 +34,19 @@ QUALITY_PRESETS: Dict[str, Dict[str, Any]] = {
     "4060ti_safe": {
         "max_scene_seconds": 4.0,
         "fps": 24,
-        "resolutions": {"9:16": (576, 1024), "4:5": (640, 800), "16:9": (768, 432), "1:1": (640, 640)},
+        "resolutions": {"9:16": (576, 1024), "4:5": (640, 800), "16:9": (768, 432), "4:3": (640, 480), "1:1": (640, 640)},
         "notes": "16GB VRAM safe: short per-scene generations, fp16/bf16, offload where supported.",
     },
     "balanced": {
         "max_scene_seconds": 5.0,
         "fps": 24,
-        "resolutions": {"9:16": (720, 1280), "4:5": (720, 900), "16:9": (960, 544), "1:1": (768, 768)},
+        "resolutions": {"9:16": (720, 1280), "4:5": (720, 900), "16:9": (960, 544), "4:3": (768, 576), "1:1": (768, 768)},
         "notes": "Higher resolution if VRAM allows; keep scenes short.",
     },
     "high_quality": {
         "max_scene_seconds": 6.0,
         "fps": 24,
-        "resolutions": {"9:16": (720, 1280), "4:5": (960, 1200), "16:9": (1280, 720), "1:1": (1024, 1024)},
+        "resolutions": {"9:16": (720, 1280), "4:5": (960, 1200), "16:9": (1280, 720), "4:3": (1024, 768), "1:1": (1024, 1024)},
         "notes": "May exceed 16GB VRAM depending on installed LTXVideo settings.",
     },
 }
@@ -104,6 +104,7 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
         "text_encoder_mode": "native_ltxv_cpu",
         "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
         "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
+        "image_strength": 0.9,
         "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
         "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",
         "gemma_max_length": 512,

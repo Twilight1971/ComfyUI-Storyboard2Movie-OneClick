@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from statistics import median
 from typing import Any, Dict, Tuple
+
+from PIL import Image, ImageOps
 
 from .audio_builder import build_audio_timeline
 from .config import QUALITY_PRESETS, StoryboardSettings, comfy_input_dir, ensure_dir, parse_json_string, project_dir, safe_json_dumps
@@ -31,8 +34,7 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
         x1 = max(x0 + 1, min(pil.width, x1))
         y1 = max(y0 + 1, min(pil.height, y1))
         crop = pil.crop((x0, y0, x1, y1)).convert("RGB")
-        crop.thumbnail((int(width), int(height)))
-        canvas = crop.resize((int(width), int(height)))
+        canvas = ImageOps.fit(crop, (int(width), int(height)), method=Image.Resampling.LANCZOS, centering=(0.5, 0.45))
         filename = f"scene_{idx:03d}_start.png"
         output_path = frames_dir / filename
         input_path = input_root / filename
@@ -58,6 +60,28 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
         plan["project"]["character_reference_path"] = str(ref_out)
         plan["project"]["character_reference_input_name"] = f"storyboard2movie/{output_name}/character_reference.png"
     return "Exported scene start frames:\n" + "\n".join(reports)
+
+
+def _render_aspect_from_scene_panels(plan: Dict[str, Any], fallback: str) -> str:
+    ratios = []
+    for scene in plan.get("scenes", []):
+        bbox = scene.get("source_panel_bbox")
+        if bbox and len(bbox) == 4:
+            w = max(1, int(bbox[2]) - int(bbox[0]))
+            h = max(1, int(bbox[3]) - int(bbox[1]))
+            ratios.append(w / h)
+    if not ratios:
+        return fallback
+    value = median(ratios)
+    if value >= 1.45:
+        return "16:9"
+    if 1.15 <= value < 1.45:
+        return "4:3"
+    if 0.72 <= value <= 0.88:
+        return "4:5"
+    if 0.52 <= value <= 0.64:
+        return "9:16"
+    return fallback
 
 
 class StoryboardImageAnalyzer:
@@ -151,10 +175,15 @@ class LTXStoryboardMovieOrchestrator:
         preset = QUALITY_PRESETS.get(quality_mode, QUALITY_PRESETS["4060ti_safe"])
         plan = clamp_scene_durations(plan, float(preset["max_scene_seconds"]))
         project = plan.setdefault("project", {})
-        aspect = str(project.get("aspect_ratio", "9:16"))
-        if (int(target_width), int(target_height)) == (576, 1024) and aspect in preset.get("resolutions", {}):
+        storyboard_aspect = str(project.get("aspect_ratio", "9:16"))
+        aspect = _render_aspect_from_scene_panels(plan, storyboard_aspect)
+        if quality_mode == "4060ti_safe" and aspect in preset.get("resolutions", {}):
+            target_width, target_height = preset["resolutions"][aspect]
+        elif (int(target_width), int(target_height)) == (576, 1024) and aspect in preset.get("resolutions", {}):
             target_width, target_height = preset["resolutions"][aspect]
         project["fps"] = int(fps)
+        project["storyboard_aspect_ratio"] = storyboard_aspect
+        project["render_aspect_ratio"] = aspect
         project["resolution"] = {"width": int(target_width), "height": int(target_height)}
         project["quality_mode"] = quality_mode
         project["output_name"] = output_name

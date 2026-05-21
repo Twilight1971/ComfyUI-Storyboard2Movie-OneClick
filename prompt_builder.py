@@ -28,25 +28,29 @@ def build_scene_prompt(scene: Dict[str, Any], project: Dict[str, Any], global_st
     environment = _clean(scene.get("environment_notes"), "environment inferred from the storyboard")
     lighting = _clean(scene.get("lighting"), "realistic cinematic lighting")
     style = ", ".join(part for part in [project.get("style"), global_style, MODE_STYLE.get(mode, MODE_STYLE["cinematic"])] if part)
-    identity_lock = _clean(project.get("character_identity_lock"), "")
+    identity_lock = _clean(
+        project.get("character_identity_lock"),
+        "same character identity, same wardrobe, same face, same hero prop",
+    )
     continuity = _clean(scene.get("character_continuity"), "stable identity and consistent wardrobe") if keep_character_consistency else "consistent objects and scene geography"
     if identity_lock and continuity == identity_lock:
         continuity = ""
     parts = [
         f"Scene {scene.get('id', 1)}, {duration:g} seconds.",
+        "Use the provided storyboard frame as the exact first frame and visual anchor.",
         subject,
         action,
         camera,
         environment,
         lighting,
-        "Mood is coherent with the storyboard.",
+        "Preserve the original composition, face, wardrobe, prop, colors, and background from the first frame.",
         style,
         identity_lock,
         continuity,
-        "Smooth natural motion, temporal consistency, coherent anatomy, stable identity, cinematic composition.",
+        "Subtle natural motion, stable face, stable identity, coherent anatomy, no redesign, no scene change.",
     ]
     prompt = " ".join(p.strip() for p in parts if p and p.strip())
-    return " ".join(prompt.split())[:1400]
+    return " ".join(prompt.split())[:900]
 
 
 def enhance_storyboard_plan(plan: Dict[str, Any], global_style: str, prompt_strength: float, keep_character_consistency: bool, add_camera_language: bool, ltx_prompt_mode: str) -> Tuple[Dict[str, Any], str]:

@@ -66,6 +66,7 @@ Use `quality_mode = 4060ti_safe` first:
 - Enable fp16/bf16/model offload in your LTXVideo template where supported.
 - Fixed 4:5 editorial storyboard sheets use `640x800` in `4060ti_safe`.
 - Generated scene workflows use `text_encoder_mode = native_ltxv_cpu` by default. This uses ComfyUI's native LTXV `DualCLIPLoader` on CPU with the fp4 mixed Gemma file and LTX text projection, avoiding the full Gemma loader's 16GB VRAM OOM.
+- If the fixed 4:5 sheet contains landscape storyboard frames, the scene render aspect is derived from the frame panels. Typical `4060ti_safe` scene clips use `640x480` or `768x432` instead of upscaling tiny storyboard panels to 1024-wide.
 
 ## Recommended Storyboard Format
 
@@ -150,7 +151,8 @@ Default 16GB-safe mapping:
 {
   "text_encoder_mode": "native_ltxv_cpu",
   "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
-  "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors"
+  "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
+  "image_strength": 0.9
 }
 ```
 

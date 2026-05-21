@@ -194,6 +194,7 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
     scene_id = int(scene.get("id", 1))
     frames = _valid_ltx_frames(float(scene.get("duration", 3.0)), int(fps))
     prompt = scene.get("prompt", "")
+    image_strength = float(mapping.get("image_strength", 0.9))
     input_name = scene.get("start_frame_input_name") or scene.get("start_frame_path") or "storyboard.png"
     output_prefix = f"storyboard_movie/{project.get('output_name', 'movieclip')}/scenes/scene_{scene_id:03d}"
 
@@ -204,7 +205,7 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
     _patch_node(workflow, 5184, [int(fps)])
     _patch_node(workflow, 5186, [frames, "fixed"])
     _patch_node(workflow, 5185, [int(width), int(height), 1, 0])
-    _patch_node(workflow, 5189, [frames, int(fps), 0.72, int(seed) + scene_id - 1])
+    _patch_node(workflow, 5189, [frames, int(fps), image_strength, int(seed) + scene_id - 1])
     _patch_node(workflow, 4958, [output_prefix, "auto", "auto"])
 
     checkpoint = mapping.get("checkpoint")
