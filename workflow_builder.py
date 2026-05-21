@@ -106,6 +106,11 @@ def _remove_links(workflow: Dict[str, Any], link_ids: List[int]) -> None:
                 out["links"] = [x for x in links if x not in remove]
 
 
+def _remove_nodes(workflow: Dict[str, Any], node_ids: List[int]) -> None:
+    remove = set(int(x) for x in node_ids)
+    workflow["nodes"] = [node for node in workflow.get("nodes", []) if int(node.get("id", -1)) not in remove]
+
+
 def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str, reason: str = "checkpoint_clip") -> None:
     """Use the checkpoint CLIP path instead of the Gemma 12B text encoder.
 
@@ -135,6 +140,51 @@ def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str, rea
     workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = reason
 
 
+def _configure_native_ltxv_cpu_clip(workflow: Dict[str, Any], prompt: str, clip_name: str, projection_name: str) -> None:
+    """Use ComfyUI's native LTXV DualCLIPLoader on CPU.
+
+    The LTX-2.3 checkpoint does not contain a CLIP/text encoder. The dedicated
+    LTXVideo Gemma loader can exceed 16GB VRAM, so this route uses ComfyUI's
+    CLIPType.LTXV loader with the fp4 mixed Gemma file plus text projection and
+    keeps it on CPU.
+    """
+    _remove_links(workflow, [13924, 13925, 13926, 13927, 13928])
+    _remove_nodes(workflow, [5178, 5192])
+    clip_encode = _node_by_id(workflow, 5174)
+    if clip_encode:
+        _disconnect_input(clip_encode, "text")
+        for item in clip_encode.get("inputs", []):
+            if item.get("name") == "clip":
+                item["link"] = 200002
+        clip_encode["widgets_values"] = [prompt]
+
+    workflow.setdefault("nodes", []).append(
+        {
+            "id": 900002,
+            "type": "DualCLIPLoader",
+            "pos": [690, 160],
+            "size": [360, 106],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "CLIP",
+                    "type": "CLIP",
+                    "links": [200002],
+                    "slot_index": 0,
+                }
+            ],
+            "properties": {"Node name for S&R": "DualCLIPLoader"},
+            "widgets_values": [clip_name, projection_name, "ltxv", "cpu"],
+        }
+    )
+    if not any(int(link[0]) == 200002 for link in workflow.get("links", [])):
+        workflow.setdefault("links", []).append([200002, 900002, 0, 5174, 0, "CLIP"])
+    workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "native_ltxv_cpu"
+
+
 def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
     if not LTX_I2V_TEMPLATE.exists():
         return build_placeholder_ltx_workflow(scene, project, seed, width, height, fps)
@@ -159,7 +209,9 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
 
     checkpoint = mapping.get("checkpoint")
     audio_vae = mapping.get("audio_vae", checkpoint)
-    text_encoder_mode = str(mapping.get("text_encoder_mode", "checkpoint_clip")).lower().strip()
+    text_encoder_mode = str(mapping.get("text_encoder_mode", "native_ltxv_cpu")).lower().strip()
+    native_ltxv_clip = mapping.get("native_ltxv_clip", "gemma_3_12B_it_fp4_mixed.safetensors")
+    native_ltxv_projection = mapping.get("native_ltxv_projection", "ltx2\\ltx-2.3_text_projection_bf16.safetensors")
     gemma_text_encoder = mapping.get("gemma_text_encoder")
     gemma_connector = mapping.get("gemma_connector") or checkpoint
     gemma_max_length = int(mapping.get("gemma_max_length", 512))
@@ -171,7 +223,10 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
     tokenizer_root = _find_tokenizer_root()
     quality_mode = str(project.get("quality_mode", "4060ti_safe")).lower()
     use_gemma = text_encoder_mode in {"gemma", "gemma_12b", "gemma12b"}
-    if use_gemma and tokenizer_root and (gemma_text_encoder or gemma_connector):
+    use_native_ltxv = text_encoder_mode in {"native_ltxv_cpu", "ltxv_cpu", "dualclip_ltxv_cpu"}
+    if use_native_ltxv:
+        _configure_native_ltxv_cpu_clip(workflow, prompt, native_ltxv_clip, native_ltxv_projection)
+    elif use_gemma and tokenizer_root and (gemma_text_encoder or gemma_connector):
         _patch_node(workflow, 5178, [gemma_text_encoder or "", gemma_connector or "", gemma_max_length])
         workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "gemma"
     elif use_gemma and not tokenizer_root:

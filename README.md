@@ -65,7 +65,7 @@ Use `quality_mode = 4060ti_safe` first:
 - Split a 12-second storyboard into multiple short clips instead of one long generation.
 - Enable fp16/bf16/model offload in your LTXVideo template where supported.
 - Fixed 4:5 editorial storyboard sheets use `640x800` in `4060ti_safe`.
-- Generated scene workflows use `text_encoder_mode = checkpoint_clip` by default. The full Gemma 3 12B text encoder is installed-compatible, but it can exceed 16GB VRAM during `CLIPTextEncode`.
+- Generated scene workflows use `text_encoder_mode = native_ltxv_cpu` by default. This uses ComfyUI's native LTXV `DualCLIPLoader` on CPU with the fp4 mixed Gemma file and LTX text projection, avoiding the full Gemma loader's 16GB VRAM OOM.
 
 ## Recommended Storyboard Format
 
@@ -148,7 +148,9 @@ Default 16GB-safe mapping:
 
 ```json
 {
-  "text_encoder_mode": "checkpoint_clip"
+  "text_encoder_mode": "native_ltxv_cpu",
+  "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
+  "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors"
 }
 ```
 
@@ -168,7 +170,7 @@ To force the full Gemma loader on a larger GPU, set:
 - Missing FFmpeg: install FFmpeg and restart ComfyUI. Audio and assembly need it.
 - Missing OCR: install `pytesseract` or `easyocr`; otherwise the analyzer uses image layout heuristics.
 - Missing LTXVideo nodes: the package still creates plans and scene workflow JSON files, but you must install LTXVideo to generate actual clips.
-- CUDA OOM: use `4060ti_safe`, shorten scene durations, lower resolution, render one scene at a time, and keep `text_encoder_mode = checkpoint_clip` on 16GB GPUs.
+- CUDA OOM: use `4060ti_safe`, shorten scene durations, lower resolution, render one scene at a time, and keep `text_encoder_mode = native_ltxv_cpu` on 16GB GPUs.
 - Bad storyboard parsing: edit `storyboard_plan_final.json` manually, then feed it into `Storyboard Scene Prompt Builder`.
 - Empty final video path: expected scene clips do not exist yet. Render them first, then assemble.
 

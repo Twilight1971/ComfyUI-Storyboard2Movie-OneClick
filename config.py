@@ -101,12 +101,14 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
         "models_root": str(MODELS_ROOT),
         "checkpoint": "LTX23/ltx-2.3-22b-dev-fp8.safetensors",
         "audio_vae": "LTX23/ltx-2.3-22b-distilled_audio_vae.safetensors",
-        "text_encoder_mode": "checkpoint_clip",
+        "text_encoder_mode": "native_ltxv_cpu",
+        "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
+        "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
         "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
         "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",
         "gemma_max_length": 512,
         "latent_upscaler": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-        "notes": "Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V distilled template. 4060ti_safe uses checkpoint_clip text encoding by default to avoid Gemma 12B VRAM OOM.",
+        "notes": "Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V distilled template. 4060ti_safe uses native_ltxv_cpu text encoding by default to avoid Gemma 12B VRAM OOM.",
         "recommended_server": "http://127.0.0.1:666",
     }
 
