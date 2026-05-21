@@ -174,9 +174,11 @@ class LTXStoryboardMovieOrchestrator:
                 "enable_subtitles": ("BOOLEAN", {"default": False}),
                 "enable_intermediate_exports": ("BOOLEAN", {"default": True}),
                 "keep_temp_files": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "first_frame_image": ("IMAGE",),
                 "startframe_upscale_mode": (["preset", "off", "lanczos_2x", "lanczos_4x"], {"default": "preset"}),
             },
-            "optional": {"first_frame_image": ("IMAGE",)},
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
