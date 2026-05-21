@@ -104,6 +104,9 @@ class LTXStoryboardMovieOrchestrator:
         preset = QUALITY_PRESETS.get(quality_mode, QUALITY_PRESETS["4060ti_safe"])
         plan = clamp_scene_durations(plan, float(preset["max_scene_seconds"]))
         project = plan.setdefault("project", {})
+        aspect = str(project.get("aspect_ratio", "9:16"))
+        if (int(target_width), int(target_height)) == (576, 1024) and aspect in preset.get("resolutions", {}):
+            target_width, target_height = preset["resolutions"][aspect]
         project["fps"] = int(fps)
         project["resolution"] = {"width": int(target_width), "height": int(target_height)}
         project["quality_mode"] = quality_mode
