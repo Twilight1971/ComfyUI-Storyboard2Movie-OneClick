@@ -194,7 +194,7 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
     scene_id = int(scene.get("id", 1))
     frames = _valid_ltx_frames(float(scene.get("duration", 3.0)), int(fps))
     prompt = scene.get("prompt", "")
-    image_strength = float(mapping.get("image_strength", 0.9))
+    image_strength = float(mapping.get("image_strength", 0.72))
     input_name = scene.get("start_frame_input_name") or scene.get("start_frame_path") or "storyboard.png"
     output_prefix = f"storyboard_movie/{project.get('output_name', 'movieclip')}/scenes/scene_{scene_id:03d}"
 

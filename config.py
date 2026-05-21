@@ -77,6 +77,11 @@ def safe_json_dumps(data: Any, indent: int = 2) -> str:
     return json.dumps(data, ensure_ascii=False, indent=indent)
 
 
+def clean_output_name(output_name: str, fallback: str = "storyboard_movie") -> str:
+    cleaned = "".join(c for c in str(output_name or "").strip() if c.isalnum() or c in ("-", "_")).strip("_-")
+    return cleaned or fallback
+
+
 def parse_json_string(value: str) -> Dict[str, Any]:
     if not value or not value.strip():
         raise ValueError("Expected a non-empty storyboard JSON string.")
@@ -84,9 +89,7 @@ def parse_json_string(value: str) -> Dict[str, Any]:
 
 
 def project_dir(output_name: str) -> Path:
-    cleaned = "".join(c for c in output_name.strip() if c.isalnum() or c in ("-", "_")).strip("_-")
-    cleaned = cleaned or "storyboard_movie"
-    return ensure_dir(OUTPUT_ROOT / cleaned)
+    return ensure_dir(OUTPUT_ROOT / clean_output_name(output_name))
 
 
 def load_user_ltx_mapping() -> Dict[str, Any]:
@@ -107,7 +110,7 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
         "text_encoder_mode": "native_ltxv_cpu",
         "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
         "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
-        "image_strength": 0.9,
+        "image_strength": 0.72,
         "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
         "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",
         "gemma_max_length": 512,

@@ -154,7 +154,7 @@ Default 16GB-safe mapping:
   "text_encoder_mode": "native_ltxv_cpu",
   "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
   "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
-  "image_strength": 0.9
+  "image_strength": 0.72
 }
 ```
 

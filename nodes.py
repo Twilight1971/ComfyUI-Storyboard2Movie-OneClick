@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 from PIL import Image, ImageOps
 
 from .audio_builder import build_audio_timeline
-from .config import QUALITY_PRESETS, StoryboardSettings, comfy_input_dir, ensure_dir, parse_json_string, project_dir, safe_json_dumps
+from .config import QUALITY_PRESETS, StoryboardSettings, clean_output_name, comfy_input_dir, ensure_dir, parse_json_string, project_dir, safe_json_dumps
 from .prompt_builder import enhance_storyboard_plan
 from .scene_planner import clamp_scene_durations
 from .storyboard_parser import analyze_storyboard_image, image_to_pil
@@ -202,6 +202,7 @@ class LTXStoryboardMovieOrchestrator:
         project["storyboard_aspect_ratio"] = storyboard_aspect
         project["render_aspect_ratio"] = aspect
         project["resolution"] = {"width": int(target_width), "height": int(target_height)}
+        output_name = clean_output_name(output_name)
         project["quality_mode"] = quality_mode
         project["output_name"] = output_name
         if startframe_upscale_mode == "preset":
