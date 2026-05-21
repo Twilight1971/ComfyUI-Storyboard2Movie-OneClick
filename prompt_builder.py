@@ -30,6 +30,8 @@ def build_scene_prompt(scene: Dict[str, Any], project: Dict[str, Any], global_st
     style = ", ".join(part for part in [project.get("style"), global_style, MODE_STYLE.get(mode, MODE_STYLE["cinematic"])] if part)
     identity_lock = _clean(project.get("character_identity_lock"), "")
     continuity = _clean(scene.get("character_continuity"), "stable identity and consistent wardrobe") if keep_character_consistency else "consistent objects and scene geography"
+    if identity_lock and continuity == identity_lock:
+        continuity = ""
     parts = [
         f"Scene {scene.get('id', 1)}, {duration:g} seconds.",
         subject,

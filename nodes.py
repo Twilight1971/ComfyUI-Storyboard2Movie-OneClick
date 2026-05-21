@@ -5,12 +5,59 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from .audio_builder import build_audio_timeline
-from .config import QUALITY_PRESETS, StoryboardSettings, ensure_dir, parse_json_string, project_dir, safe_json_dumps
+from .config import QUALITY_PRESETS, StoryboardSettings, comfy_input_dir, ensure_dir, parse_json_string, project_dir, safe_json_dumps
 from .prompt_builder import enhance_storyboard_plan
 from .scene_planner import clamp_scene_durations
-from .storyboard_parser import analyze_storyboard_image
+from .storyboard_parser import analyze_storyboard_image, image_to_pil
 from .video_assembler import assemble_movie
 from .workflow_builder import export_scene_workflows, try_submit_scene_workflows
+
+
+def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base: Path, output_name: str, width: int, height: int) -> str:
+    if storyboard_image is None:
+        return "No storyboard image connected to orchestrator first_frame_image; start frames were not exported."
+    pil = image_to_pil(storyboard_image)
+    frames_dir = ensure_dir(base / "frames")
+    input_root = ensure_dir(comfy_input_dir() / "storyboard2movie" / output_name)
+    reports = []
+    for idx, scene in enumerate(plan.get("scenes", []), start=1):
+        bbox = scene.get("source_panel_bbox")
+        if not bbox or len(bbox) != 4:
+            reports.append(f"scene_{idx:03d}: missing source_panel_bbox")
+            continue
+        x0, y0, x1, y1 = [int(v) for v in bbox]
+        x0 = max(0, min(pil.width - 1, x0))
+        y0 = max(0, min(pil.height - 1, y0))
+        x1 = max(x0 + 1, min(pil.width, x1))
+        y1 = max(y0 + 1, min(pil.height, y1))
+        crop = pil.crop((x0, y0, x1, y1)).convert("RGB")
+        crop.thumbnail((int(width), int(height)))
+        canvas = crop.resize((int(width), int(height)))
+        filename = f"scene_{idx:03d}_start.png"
+        output_path = frames_dir / filename
+        input_path = input_root / filename
+        canvas.save(output_path)
+        canvas.save(input_path)
+        rel_name = f"storyboard2movie/{output_name}/{filename}"
+        scene["start_frame_path"] = str(output_path)
+        scene["start_frame_input_name"] = rel_name
+        reports.append(f"scene_{idx:03d}: {rel_name}")
+
+    ref_bbox = plan.get("project", {}).get("character_reference_bbox")
+    if ref_bbox and len(ref_bbox) == 4:
+        x0, y0, x1, y1 = [int(v) for v in ref_bbox]
+        x0 = max(0, min(pil.width - 1, x0))
+        y0 = max(0, min(pil.height - 1, y0))
+        x1 = max(x0 + 1, min(pil.width, x1))
+        y1 = max(y0 + 1, min(pil.height, y1))
+        ref = pil.crop((x0, y0, x1, y1)).convert("RGB")
+        ref_out = frames_dir / "character_reference.png"
+        ref_in = input_root / "character_reference.png"
+        ref.save(ref_out)
+        ref.save(ref_in)
+        plan["project"]["character_reference_path"] = str(ref_out)
+        plan["project"]["character_reference_input_name"] = f"storyboard2movie/{output_name}/character_reference.png"
+    return "Exported scene start frames:\n" + "\n".join(reports)
 
 
 class StoryboardImageAnalyzer:
@@ -110,11 +157,13 @@ class LTXStoryboardMovieOrchestrator:
         project["fps"] = int(fps)
         project["resolution"] = {"width": int(target_width), "height": int(target_height)}
         project["quality_mode"] = quality_mode
+        project["output_name"] = output_name
         base = project_dir(output_name)
         scenes_dir = ensure_dir(base / "scenes")
         workflows_dir = ensure_dir(base / "workflows")
         audio_dir = ensure_dir(base / "audio")
         final_dir = ensure_dir(base / "final")
+        frame_report = _export_scene_start_frames(plan, first_frame_image, base, output_name, int(target_width), int(target_height))
         expected_scene_paths = [str(scenes_dir / f"scene_{int(s.get('id', i)):03d}.mp4") for i, s in enumerate(plan.get("scenes", []), start=1)]
         plan["expected_scene_video_paths"] = expected_scene_paths
         workflow_paths, workflow_report = export_scene_workflows(plan, workflows_dir, int(seed), int(target_width), int(target_height), int(fps))
@@ -135,6 +184,7 @@ class LTXStoryboardMovieOrchestrator:
             f"Storyboard2Movie output: {base}",
             f"Quality preset: {quality_mode} - {preset['notes']}",
             workflow_report,
+            frame_report,
             f"Expected rendered scene clips:\n" + "\n".join(expected_scene_paths),
             audio_report,
             assembly_report,

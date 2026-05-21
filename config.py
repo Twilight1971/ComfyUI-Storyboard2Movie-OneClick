@@ -8,6 +8,9 @@ from typing import Any, Dict
 
 
 PACKAGE_NAME = "ComfyUI-Storyboard2Movie-OneClick"
+MODELS_ROOT = Path("N:/KI_Daten/models")
+LTX_I2V_TEMPLATE = Path("N:/KI_Daten/custom_nodes/ComfyUI-LTXVideo/example_workflows/LTX-2_I2V_Distilled_wLora.json")
+COMFY_INPUT_FALLBACK = Path("N:/pinokio/api/comfy.git/app/input")
 DEFAULT_NEGATIVE_PROMPT = (
     "low quality, blurry, flicker, jitter, distorted face, warped hands, "
     "duplicated limbs, bad anatomy, inconsistent character, random text, "
@@ -93,7 +96,23 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
             with candidate.open("r", encoding="utf-8") as f:
                 return json.load(f)
     return {
-        "template_mode": "placeholder",
-        "notes": "Replace placeholder nodes with your installed LTXVideo workflow template if schemas differ.",
+        "template_mode": "ltxvideo_i2v_distilled_template",
+        "template_path": str(LTX_I2V_TEMPLATE),
+        "models_root": str(MODELS_ROOT),
+        "checkpoint": "LTX23/ltx-2.3-22b-dev-fp8.safetensors",
+        "audio_vae": "LTX23/ltx-2.3-22b-distilled_audio_vae.safetensors",
+        "gemma_text_encoder": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+        "gemma_connector": "ltx-2.3-22b-distilled_embeddings_connectors.safetensors",
+        "latent_upscaler": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+        "notes": "Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V distilled template.",
         "recommended_server": "http://127.0.0.1:666",
     }
+
+
+def comfy_input_dir() -> Path:
+    try:
+        import folder_paths  # type: ignore
+
+        return Path(folder_paths.get_input_directory())
+    except Exception:
+        return COMFY_INPUT_FALLBACK

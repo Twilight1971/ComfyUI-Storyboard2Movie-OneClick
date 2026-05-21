@@ -99,6 +99,21 @@ Load Image -> Storyboard Image Analyzer -> Storyboard Scene Prompt Builder -> LT
 
 The first run is expected to create the plan, prompt list, audio/SRT placeholders, and per-scene LTX workflow JSON files. The final MP4 can only be assembled after the generated LTX scene workflows have been rendered into the expected `scene_001.mp4`, `scene_002.mp4`, etc. files.
 
+For the installed Windows/NVIDIA setup used by this package, scene workflows are patched from:
+
+```text
+N:\KI_Daten\custom_nodes\ComfyUI-LTXVideo\example_workflows\LTX-2_I2V_Distilled_wLora.json
+```
+
+The orchestrator also crops every storyboard shot into a real image-to-video start frame and writes it both to the project output folder and to ComfyUI input:
+
+```text
+output\storyboard_movie\<output_name>\frames\scene_001_start.png
+input\storyboard2movie\<output_name>\scene_001_start.png
+```
+
+Each generated LTX scene workflow uses its matching start frame through `LoadImage`.
+
 The orchestrator writes:
 
 ```text
@@ -124,7 +139,7 @@ outputs/storyboard_movie/<output_name>/final/<output_name>_final.mp4
 
 ## LTX Workflow Mapping
 
-Generated scene workflows contain a metadata node named `S2M_LTX23_Scene_Metadata`. This is deliberate: LTXVideo nodes vary by package. Use the metadata values (`prompt`, `negative_prompt`, `seed`, `width`, `height`, `fps`, `frames`, `duration`) in your working LTX-2.3 ComfyUI template.
+Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V distilled template when it is found. If the template is missing, the package falls back to metadata-only workflows.
 
 For advanced automation, create `ltx_node_mapping.json` next to `config.py` or point `STORYBOARD2MOVIE_LTX_MAPPING` to a mapping file. The code is structured so this can be replaced with a concrete template generator for your exact LTXVideo installation.
 
