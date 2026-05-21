@@ -76,7 +76,7 @@
         { "name": "render_report", "type": "STRING", "links": null, "slot_index": 5 }
       ],
       "properties": { "Node name for S&R": "LTXStoryboardMovieOrchestrator" },
-      "widgets_values": ["storyboard_movie", 12345, 24, 576, 1024, "4060ti_safe", true, true, false, true, false]
+      "widgets_values": ["storyboard_movie", 12345, "fixed", 24, 576, 1024, "4060ti_safe", true, true, false, true, false]
     },
     {
       "id": 5,
