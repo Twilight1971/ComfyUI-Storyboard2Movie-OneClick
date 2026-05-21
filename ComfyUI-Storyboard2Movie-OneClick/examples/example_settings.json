@@ -1,0 +1,11 @@
+{
+  "quality_mode": "4060ti_safe",
+  "fps": 24,
+  "target_width": 576,
+  "target_height": 1024,
+  "max_scene_seconds": 4.0,
+  "comfyui_server_url": "http://127.0.0.1:666",
+  "models_root": "N:/KI_Daten/models",
+  "custom_nodes_root": "N:/KI_Daten/custom_nodes",
+  "notes": "Use short scene clips for RTX 4060 Ti 16GB. Render generated scene workflows with your installed LTX-2.3 template."
+}

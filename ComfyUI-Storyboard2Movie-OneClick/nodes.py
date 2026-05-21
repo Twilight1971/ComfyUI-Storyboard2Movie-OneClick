@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+from .audio_builder import build_audio_timeline
+from .config import QUALITY_PRESETS, StoryboardSettings, ensure_dir, parse_json_string, project_dir, safe_json_dumps
+from .prompt_builder import enhance_storyboard_plan
+from .scene_planner import clamp_scene_durations
+from .storyboard_parser import analyze_storyboard_image
+from .video_assembler import assemble_movie
+from .workflow_builder import export_scene_workflows, try_submit_scene_workflows
+
+
+class StoryboardImageAnalyzer:
+    @classmethod
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        return {
+            "required": {
+                "storyboard_image": ("IMAGE",),
+                "target_language": ("STRING", {"default": "en"}),
+                "fallback_style": ("STRING", {"default": "cinematic realistic"}),
+                "default_duration_seconds": ("FLOAT", {"default": 12.0, "min": 0.5, "max": 300.0, "step": 0.5}),
+                "default_fps": ("INT", {"default": 24, "min": 1, "max": 120}),
+                "max_scenes": ("INT", {"default": 8, "min": 1, "max": 64}),
+                "use_local_vlm": ("BOOLEAN", {"default": True}),
+                "vlm_model_hint": ("STRING", {"default": "Qwen2.5-VL / Florence-2 / OCR fallback"}),
+                "save_debug_json": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("storyboard_plan_json", "scene_count", "detected_aspect_ratio", "debug_text")
+    FUNCTION = "analyze"
+    CATEGORY = "Storyboard2Movie"
+
+    def analyze(self, storyboard_image: Any, target_language: str, fallback_style: str, default_duration_seconds: float, default_fps: int, max_scenes: int, use_local_vlm: bool, vlm_model_hint: str, save_debug_json: bool) -> Tuple[str, int, str, str]:
+        settings = StoryboardSettings(target_language, fallback_style, default_duration_seconds, default_fps, max_scenes, use_local_vlm, vlm_model_hint, save_debug_json)
+        plan = analyze_storyboard_image(storyboard_image, settings)
+        scene_count = len(plan.get("scenes", []))
+        aspect = plan.get("project", {}).get("aspect_ratio", "9:16")
+        debug = safe_json_dumps(plan.get("debug", {}))
+        if save_debug_json:
+            out = ensure_dir(project_dir("storyboard_movie") / "debug")
+            (out / "last_analyzer_plan.json").write_text(safe_json_dumps(plan), encoding="utf-8")
+        return safe_json_dumps(plan), scene_count, aspect, debug
+
+
+class StoryboardScenePromptBuilder:
+    @classmethod
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        return {
+            "required": {
+                "storyboard_plan_json": ("STRING", {"multiline": True}),
+                "global_style": ("STRING", {"default": "cinematic, coherent motion, realistic lighting"}),
+                "prompt_strength": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "keep_character_consistency": ("BOOLEAN", {"default": True}),
+                "add_camera_language": ("BOOLEAN", {"default": True}),
+                "ltx_prompt_mode": (["balanced", "motion-heavy", "ugc-realistic", "cinematic", "anime", "pixel-art"], {"default": "cinematic"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("enhanced_storyboard_plan_json", "prompt_list")
+    FUNCTION = "build"
+    CATEGORY = "Storyboard2Movie"
+
+    def build(self, storyboard_plan_json: str, global_style: str, prompt_strength: float, keep_character_consistency: bool, add_camera_language: bool, ltx_prompt_mode: str) -> Tuple[str, str]:
+        plan = parse_json_string(storyboard_plan_json)
+        enhanced, prompts = enhance_storyboard_plan(plan, global_style, prompt_strength, keep_character_consistency, add_camera_language, ltx_prompt_mode)
+        return safe_json_dumps(enhanced), prompts
+
+
+class LTXStoryboardMovieOrchestrator:
+    @classmethod
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        return {
+            "required": {
+                "enhanced_storyboard_plan_json": ("STRING", {"multiline": True}),
+                "output_name": ("STRING", {"default": "storyboard_movie"}),
+                "seed": ("INT", {"default": 12345, "min": 0, "max": 2**31 - 1}),
+                "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
+                "target_width": ("INT", {"default": 576, "min": 64, "max": 4096, "step": 8}),
+                "target_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
+                "quality_mode": (["4060ti_safe", "balanced", "high_quality"], {"default": "4060ti_safe"}),
+                "enable_audio": ("BOOLEAN", {"default": True}),
+                "enable_voiceover": ("BOOLEAN", {"default": True}),
+                "enable_subtitles": ("BOOLEAN", {"default": False}),
+                "enable_intermediate_exports": ("BOOLEAN", {"default": True}),
+                "keep_temp_files": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {"first_frame_image": ("IMAGE",)},
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("final_video_path", "final_plan_json", "render_report")
+    FUNCTION = "run"
+    CATEGORY = "Storyboard2Movie"
+
+    def run(self, enhanced_storyboard_plan_json: str, output_name: str, seed: int, fps: int, target_width: int, target_height: int, quality_mode: str, enable_audio: bool, enable_voiceover: bool, enable_subtitles: bool, enable_intermediate_exports: bool, keep_temp_files: bool, first_frame_image: Any = None) -> Tuple[str, str, str]:
+        plan = parse_json_string(enhanced_storyboard_plan_json)
+        preset = QUALITY_PRESETS.get(quality_mode, QUALITY_PRESETS["4060ti_safe"])
+        plan = clamp_scene_durations(plan, float(preset["max_scene_seconds"]))
+        project = plan.setdefault("project", {})
+        project["fps"] = int(fps)
+        project["resolution"] = {"width": int(target_width), "height": int(target_height)}
+        project["quality_mode"] = quality_mode
+        base = project_dir(output_name)
+        scenes_dir = ensure_dir(base / "scenes")
+        workflows_dir = ensure_dir(base / "workflows")
+        audio_dir = ensure_dir(base / "audio")
+        final_dir = ensure_dir(base / "final")
+        expected_scene_paths = [str(scenes_dir / f"scene_{int(s.get('id', i)):03d}.mp4") for i, s in enumerate(plan.get("scenes", []), start=1)]
+        plan["expected_scene_video_paths"] = expected_scene_paths
+        workflow_paths, workflow_report = export_scene_workflows(plan, workflows_dir, int(seed), int(target_width), int(target_height), int(fps))
+        plan["generated_scene_workflows"] = workflow_paths
+        plan_path = base / "storyboard_plan_final.json"
+        plan_path.write_text(safe_json_dumps(plan), encoding="utf-8")
+
+        audio_path = ""
+        srt_path = ""
+        audio_report = "Audio disabled."
+        if enable_audio:
+            audio_path, srt_path, audio_report = build_audio_timeline(plan, audio_dir, enable_voiceover=enable_voiceover, audio_mode="ffmpeg_placeholder")
+        scene_paths_json = safe_json_dumps({"scene_video_paths": expected_scene_paths})
+        final_path = final_dir / f"{output_name}_final.mp4"
+        assembled, assembly_report = assemble_movie(scene_paths_json, audio_path, final_path, int(fps), int(target_width), int(target_height), "hard_cut", enable_subtitles, srt_path)
+        api_report = try_submit_scene_workflows(workflow_paths)
+        report = "\n\n".join([
+            f"Storyboard2Movie output: {base}",
+            f"Quality preset: {quality_mode} - {preset['notes']}",
+            workflow_report,
+            f"Expected rendered scene clips:\n" + "\n".join(expected_scene_paths),
+            audio_report,
+            assembly_report,
+            api_report,
+            "If final_video_path is empty, render the generated LTX workflows into the expected scene clip paths and rerun the assembler/orchestrator.",
+        ])
+        (final_dir / "render_report.txt").write_text(report, encoding="utf-8")
+        return assembled, safe_json_dumps(plan), report
+
+
+class StoryboardAudioBuilder:
+    @classmethod
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        return {
+            "required": {
+                "storyboard_plan_json": ("STRING", {"multiline": True}),
+                "enable_music": ("BOOLEAN", {"default": True}),
+                "enable_sfx": ("BOOLEAN", {"default": True}),
+                "enable_voiceover": ("BOOLEAN", {"default": True}),
+                "voice": ("STRING", {"default": "default"}),
+                "music_style": ("STRING", {"default": "cinematic electronic"}),
+                "audio_mode": (["silent", "ffmpeg_placeholder", "local_tts", "local_audio_model"], {"default": "ffmpeg_placeholder"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("audio_mix_path", "srt_path", "audio_report")
+    FUNCTION = "build_audio"
+    CATEGORY = "Storyboard2Movie"
+
+    def build_audio(self, storyboard_plan_json: str, enable_music: bool, enable_sfx: bool, enable_voiceover: bool, voice: str, music_style: str, audio_mode: str) -> Tuple[str, str, str]:
+        plan = parse_json_string(storyboard_plan_json)
+        out = project_dir("storyboard_movie") / "audio"
+        return build_audio_timeline(plan, out, enable_music, enable_sfx, enable_voiceover, voice, music_style, audio_mode)
+
+
+class StoryboardMovieAssembler:
+    @classmethod
+    def INPUT_TYPES(cls) -> Dict[str, Any]:
+        return {
+            "required": {
+                "scene_video_paths_json": ("STRING", {"multiline": True}),
+                "output_name": ("STRING", {"default": "storyboard_movie_final"}),
+                "fps": ("INT", {"default": 24, "min": 1, "max": 120}),
+                "target_width": ("INT", {"default": 576, "min": 64, "max": 4096, "step": 8}),
+                "target_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
+                "transition_mode": (["hard_cut", "crossfade", "auto"], {"default": "hard_cut"}),
+                "burn_subtitles": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "audio_mix_path": ("STRING", {"default": ""}),
+                "srt_path": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("final_video_path", "assembly_report")
+    FUNCTION = "assemble"
+    CATEGORY = "Storyboard2Movie"
+
+    def assemble(self, scene_video_paths_json: str, output_name: str, fps: int, target_width: int, target_height: int, transition_mode: str, burn_subtitles: bool, audio_mix_path: str = "", srt_path: str = "") -> Tuple[str, str]:
+        final_path = project_dir("storyboard_movie") / "final" / f"{output_name}.mp4"
+        return assemble_movie(scene_video_paths_json, audio_mix_path, final_path, int(fps), int(target_width), int(target_height), transition_mode, burn_subtitles, srt_path)
+
+
+NODE_CLASS_MAPPINGS = {
+    "StoryboardImageAnalyzer": StoryboardImageAnalyzer,
+    "StoryboardScenePromptBuilder": StoryboardScenePromptBuilder,
+    "LTXStoryboardMovieOrchestrator": LTXStoryboardMovieOrchestrator,
+    "StoryboardAudioBuilder": StoryboardAudioBuilder,
+    "StoryboardMovieAssembler": StoryboardMovieAssembler,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "StoryboardImageAnalyzer": "Storyboard Image Analyzer",
+    "StoryboardScenePromptBuilder": "Storyboard Scene Prompt Builder",
+    "LTXStoryboardMovieOrchestrator": "LTX Storyboard Movie Orchestrator",
+    "StoryboardAudioBuilder": "Storyboard Audio Builder",
+    "StoryboardMovieAssembler": "Storyboard Movie Assembler",
+}

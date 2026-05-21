@@ -1,0 +1,73 @@
+{
+  "last_node_id": 7,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [0, 0],
+      "size": [315, 98],
+      "widgets_values": ["storyboard.png"]
+    },
+    {
+      "id": 2,
+      "type": "Storyboard Image Analyzer",
+      "pos": [360, 0],
+      "size": [360, 260],
+      "widgets_values": ["en", "cinematic realistic", 12.0, 24, 8, true, "Qwen2.5-VL / Florence-2 / OCR fallback", true]
+    },
+    {
+      "id": 3,
+      "type": "Storyboard Scene Prompt Builder",
+      "pos": [760, 0],
+      "size": [380, 220],
+      "widgets_values": ["", "cinematic, coherent motion, realistic lighting", 0.75, true, true, "cinematic"]
+    },
+    {
+      "id": 4,
+      "type": "LTX Storyboard Movie Orchestrator",
+      "pos": [1180, 0],
+      "size": [420, 320],
+      "widgets_values": ["", "storyboard_movie", 12345, 24, 576, 1024, "4060ti_safe", true, true, false, true, false]
+    },
+    {
+      "id": 5,
+      "type": "Storyboard Audio Builder",
+      "pos": [760, 280],
+      "size": [380, 220],
+      "widgets_values": ["", true, true, true, "default", "cinematic electronic", "ffmpeg_placeholder"]
+    },
+    {
+      "id": 6,
+      "type": "Storyboard Movie Assembler",
+      "pos": [1180, 380],
+      "size": [420, 220],
+      "widgets_values": ["{\"scene_video_paths\":[]}", "storyboard_movie_final", 24, 576, 1024, "hard_cut", false]
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [0, 180],
+      "size": [680, 160],
+      "widgets_values": [
+        "Concept workflow: load one storyboard image, analyze it, build LTX-2.3 prompts, export per-scene LTX workflow JSON files, create placeholder audio/SRT, and assemble rendered scene clips with FFmpeg. Because LTXVideo node schemas vary, connect the generated scene workflow parameters to your installed LTX-2.3 template."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 2, 0, 3, 0, "STRING"],
+    [3, 3, 0, 4, 0, "STRING"],
+    [3, 3, 0, 5, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [0, 0]
+    },
+    "storyboard2movie_note": "Use this as an importable conceptual graph. Exact ComfyUI UI JSON may need link repair after import depending on frontend version."
+  },
+  "version": 0.4
+}

@@ -1,0 +1,132 @@
+# ComfyUI-Storyboard2Movie-OneClick
+
+One-click storyboard-to-movie helpers for ComfyUI. Load a single storyboard image, parse it into a reusable scene plan, build LTX-2.3-ready prompts, export one workflow JSON per scene, create placeholder audio/subtitles, and assemble rendered scene clips into a final MP4 with FFmpeg.
+
+This package does not reimplement LTX-2.3 Video. It integrates around existing ComfyUI LTXVideo nodes/templates and keeps the mapping layer editable because LTX node class names and widget schemas can change between installs.
+
+## What It Does
+
+- Analyzes one storyboard image using OCR when available, with layout heuristics when OCR/VLM tools are missing.
+- Produces a JSON scene plan with durations, prompts, camera notes, audio cues, captions, and transitions.
+- Enhances each scene into concise LTX-2.3 video prompts.
+- Exports per-scene workflow JSON files under `outputs/storyboard_movie/<name>/workflows/`.
+- Creates silent or placeholder FFmpeg audio and SRT captions.
+- Assembles rendered scene MP4s into a final H.264/AAC MP4.
+
+## Installation
+
+1. Copy this folder to your ComfyUI custom nodes directory:
+
+   ```powershell
+   Copy-Item -Recurse ComfyUI-Storyboard2Movie-OneClick N:\KI_Daten\custom_nodes\
+   ```
+
+2. Install the minimal requirements in the same Python environment ComfyUI uses:
+
+   ```powershell
+   python -m pip install -r N:\KI_Daten\custom_nodes\ComfyUI-Storyboard2Movie-OneClick\requirements.txt
+   ```
+
+3. Install FFmpeg and make sure `ffmpeg.exe` is on `PATH`.
+
+4. Install or update ComfyUI and your LTXVideo custom nodes/templates. Put models under your model root, for example:
+
+   ```text
+   N:\KI_Daten\models
+   N:\KI_Daten\custom_nodes
+   ```
+
+5. Restart ComfyUI. The following nodes should appear under `Storyboard2Movie`:
+
+- `Storyboard Image Analyzer`
+- `Storyboard Scene Prompt Builder`
+- `LTX Storyboard Movie Orchestrator`
+- `Storyboard Audio Builder`
+- `Storyboard Movie Assembler`
+
+## Required Models
+
+- Required for actual video generation: LTX-2.3 Video models through your installed ComfyUI LTXVideo package or ComfyUI Template Library workflow.
+- Optional OCR: `pytesseract` plus the Tesseract executable, or `easyocr`.
+- Optional local VLM: Qwen2.5-VL, Florence-2, or Moondream adapter. The MVP includes an adapter abstraction note and safe fallback, not a hard dependency.
+- Optional local TTS/audio: Piper, Coqui, or another local engine. The default uses FFmpeg placeholder or silent audio.
+
+No paid API or cloud service is required.
+
+## RTX 4060 Ti 16GB Notes
+
+Use `quality_mode = 4060ti_safe` first:
+
+- 9:16: `576x1024`
+- 16:9: `768x432`
+- 1:1: `640x640`
+- `24 fps`
+- Prefer `2-4` seconds per scene.
+- Split a 12-second storyboard into multiple short clips instead of one long generation.
+- Enable fp16/bf16/model offload in your LTXVideo template where supported.
+
+If CUDA runs out of memory, reduce resolution, reduce frames/duration, close other GPU applications, and render one scene at a time.
+
+## One-Click Usage
+
+1. Load your storyboard image in ComfyUI.
+2. Connect it to `Storyboard Image Analyzer`.
+3. Connect the analyzer JSON to `Storyboard Scene Prompt Builder`.
+4. Connect the enhanced JSON to `LTX Storyboard Movie Orchestrator`.
+5. Set `quality_mode = 4060ti_safe`.
+6. Press Queue.
+
+The orchestrator writes:
+
+```text
+outputs/storyboard_movie/<output_name>/storyboard_plan_final.json
+outputs/storyboard_movie/<output_name>/workflows/scene_001_ltx23.json
+outputs/storyboard_movie/<output_name>/audio/audio_mix.m4a
+outputs/storyboard_movie/<output_name>/audio/captions.srt
+outputs/storyboard_movie/<output_name>/final/render_report.txt
+```
+
+Render each generated scene workflow with your installed LTX-2.3 template and save clips as:
+
+```text
+outputs/storyboard_movie/<output_name>/scenes/scene_001.mp4
+outputs/storyboard_movie/<output_name>/scenes/scene_002.mp4
+```
+
+Then rerun the orchestrator or use `Storyboard Movie Assembler` to create:
+
+```text
+outputs/storyboard_movie/<output_name>/final/<output_name>_final.mp4
+```
+
+## LTX Workflow Mapping
+
+Generated scene workflows contain a metadata node named `S2M_LTX23_Scene_Metadata`. This is deliberate: LTXVideo nodes vary by package. Use the metadata values (`prompt`, `negative_prompt`, `seed`, `width`, `height`, `fps`, `frames`, `duration`) in your working LTX-2.3 ComfyUI template.
+
+For advanced automation, create `ltx_node_mapping.json` next to `config.py` or point `STORYBOARD2MOVIE_LTX_MAPPING` to a mapping file. The code is structured so this can be replaced with a concrete template generator for your exact LTXVideo installation.
+
+## Troubleshooting
+
+- Missing FFmpeg: install FFmpeg and restart ComfyUI. Audio and assembly need it.
+- Missing OCR: install `pytesseract` or `easyocr`; otherwise the analyzer uses image layout heuristics.
+- Missing LTXVideo nodes: the package still creates plans and scene workflow JSON files, but you must install LTXVideo to generate actual clips.
+- CUDA OOM: use `4060ti_safe`, shorten scene durations, lower resolution, and avoid long single generations.
+- Bad storyboard parsing: edit `storyboard_plan_final.json` manually, then feed it into `Storyboard Scene Prompt Builder`.
+- Empty final video path: expected scene clips do not exist yet. Render them first, then assemble.
+
+## Example JSON
+
+See `examples/example_storyboard_plan.json` and `examples/example_settings.json`.
+
+## Development Notes
+
+The implementation is modular:
+
+- `storyboard_parser.py`: OCR, panel/layout heuristic, scene plan creation.
+- `prompt_builder.py`: LTX prompt enhancement modes.
+- `workflow_builder.py`: per-scene LTX workflow export and optional ComfyUI API submission.
+- `audio_builder.py`: silent/placeholder audio and SRT generation.
+- `video_assembler.py` and `ffmpeg_utils.py`: normalization, concatenation, audio mux, subtitle burn-in.
+- `nodes.py`: ComfyUI node registration.
+
+The MVP is intentionally useful before full LTX automation: it turns one storyboard image into a production scene plan, LTX prompts, workflow files, audio/captions, and final assembly tooling without pretending to render video when your local LTX node schema is unknown.

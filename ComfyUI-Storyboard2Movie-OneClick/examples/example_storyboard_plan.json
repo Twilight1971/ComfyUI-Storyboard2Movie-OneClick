@@ -1,0 +1,56 @@
+{
+  "project": {
+    "title": "Example Storyboard Movie",
+    "total_duration": 12.0,
+    "fps": 24,
+    "aspect_ratio": "9:16",
+    "resolution": {
+      "width": 576,
+      "height": 1024
+    },
+    "style": "cinematic realistic TikTok UGC reel style",
+    "negative_prompt": "low quality, blurry, flicker, jitter, distorted face, warped hands, duplicated limbs, bad anatomy, inconsistent character, random text, logo artifacts, compression artifacts, broken motion, scene jump"
+  },
+  "scenes": [
+    {
+      "id": 1,
+      "start": 0.0,
+      "duration": 3.0,
+      "end": 3.0,
+      "shot_type": "wide",
+      "visual_description": "A person discovers a glowing object on a rainy city street.",
+      "motion_description": "The person kneels down and reaches toward the object as rain falls.",
+      "camera": "handheld iPhone push-in",
+      "character_continuity": "same jacket, same face, same glowing object",
+      "prompt": "Scene 1, 3 seconds. A person discovers a glowing object on a rainy city street. The person kneels down and reaches toward the object as rain falls. handheld iPhone push-in. wet neon street. cinematic reflections. mysterious mood. Smooth natural motion, temporal consistency, coherent anatomy, stable identity, cinematic composition.",
+      "negative_prompt": "low quality, blurry, flicker, jitter, distorted face, warped hands, duplicated limbs, bad anatomy, inconsistent character, random text, logo artifacts, compression artifacts, broken motion, scene jump",
+      "audio": {
+        "music_mood": "quiet suspense",
+        "sfx": ["rain", "soft shimmer"],
+        "voiceover": "Everything changed when I saw the light.",
+        "dialogue": ""
+      },
+      "transition_to_next": "cut"
+    },
+    {
+      "id": 2,
+      "start": 3.0,
+      "duration": 3.0,
+      "end": 6.0,
+      "shot_type": "close-up",
+      "visual_description": "Close-up of the glowing object pulsing in the person's hand.",
+      "motion_description": "Light pulses across the person's face.",
+      "camera": "macro close-up with subtle handheld drift",
+      "character_continuity": "same hand, same object, same rainy street palette",
+      "prompt": "Scene 2, 3 seconds. Close-up of the glowing object pulsing in the person's hand. Light pulses across the person's face. macro close-up with subtle handheld drift. rainy neon street. cinematic reflections. Smooth natural motion, temporal consistency, coherent anatomy, stable identity, cinematic composition.",
+      "negative_prompt": "low quality, blurry, flicker, jitter, distorted face, warped hands, duplicated limbs, bad anatomy, inconsistent character, random text, logo artifacts, compression artifacts, broken motion, scene jump",
+      "audio": {
+        "music_mood": "rising wonder",
+        "sfx": ["energy pulse"],
+        "voiceover": "",
+        "dialogue": "What is this?"
+      },
+      "transition_to_next": "match cut"
+    }
+  ]
+}

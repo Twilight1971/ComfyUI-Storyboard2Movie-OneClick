@@ -1,0 +1,8 @@
+Pillow>=9.0.0
+numpy>=1.23.0
+
+# Optional OCR. Install one or both when you want text extraction.
+# pytesseract>=0.3.10
+# easyocr>=1.7.0
+
+# Optional local TTS/audio integrations are intentionally not required.
