@@ -31,19 +31,19 @@ QUALITY_PRESETS: Dict[str, Dict[str, Any]] = {
     "4060ti_safe": {
         "max_scene_seconds": 4.0,
         "fps": 24,
-        "resolutions": {"9:16": (576, 1024), "16:9": (768, 432), "1:1": (640, 640)},
+        "resolutions": {"9:16": (576, 1024), "4:5": (640, 800), "16:9": (768, 432), "1:1": (640, 640)},
         "notes": "16GB VRAM safe: short per-scene generations, fp16/bf16, offload where supported.",
     },
     "balanced": {
         "max_scene_seconds": 5.0,
         "fps": 24,
-        "resolutions": {"9:16": (720, 1280), "16:9": (960, 544), "1:1": (768, 768)},
+        "resolutions": {"9:16": (720, 1280), "4:5": (720, 900), "16:9": (960, 544), "1:1": (768, 768)},
         "notes": "Higher resolution if VRAM allows; keep scenes short.",
     },
     "high_quality": {
         "max_scene_seconds": 6.0,
         "fps": 24,
-        "resolutions": {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (1024, 1024)},
+        "resolutions": {"9:16": (720, 1280), "4:5": (960, 1200), "16:9": (1280, 720), "1:1": (1024, 1024)},
         "notes": "May exceed 16GB VRAM depending on installed LTXVideo settings.",
     },
 }

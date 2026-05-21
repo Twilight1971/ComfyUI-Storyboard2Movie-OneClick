@@ -64,6 +64,18 @@ Use `quality_mode = 4060ti_safe` first:
 - Prefer `2-4` seconds per scene.
 - Split a 12-second storyboard into multiple short clips instead of one long generation.
 - Enable fp16/bf16/model offload in your LTXVideo template where supported.
+- Fixed 4:5 editorial storyboard sheets use `640x800` in `4060ti_safe`.
+
+## Recommended Storyboard Format
+
+For best results, use one fixed 4:5 vertical editorial character-sheet storyboard:
+
+- Large character/profile panel on the left.
+- Storyboard grid on the right with 6 shots in two columns and three rows.
+- Each shot has a black header bar and a frame image.
+- Footer strip contains wardrobe/gear, personality/skills, and locations/conditions.
+
+This layout is detected as `editorial_character_sheet_4x5`. The parser extracts the right-side shot grid, assigns 6 scenes, uses 2 seconds per scene for a 12-second board, and keeps the overall movie target at 4:5.
 
 If CUDA runs out of memory, reduce resolution, reduce frames/duration, close other GPU applications, and render one scene at a time.
 

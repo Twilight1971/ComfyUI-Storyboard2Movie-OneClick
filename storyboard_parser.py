@@ -34,7 +34,7 @@ def image_to_pil(image: Any) -> Image.Image:
 
 def detect_aspect_ratio(width: int, height: int) -> str:
     ratio = width / max(1, height)
-    choices = {"9:16": 9 / 16, "16:9": 16 / 9, "1:1": 1.0, "4:3": 4 / 3, "3:4": 3 / 4}
+    choices = {"9:16": 9 / 16, "4:5": 4 / 5, "16:9": 16 / 9, "1:1": 1.0, "4:3": 4 / 3, "3:4": 3 / 4}
     return min(choices, key=lambda k: abs(choices[k] - ratio))
 
 
@@ -95,6 +95,9 @@ def detect_panels(image: Image.Image) -> List[Dict[str, Any]]:
     """Lightweight storyboard panel detector based on line/edge density."""
     width, height = image.size
     arr = np.asarray(image.convert("L"))
+    panels = detect_editorial_character_sheet(image)
+    if panels:
+        return panels
     panels = detect_storyboard_rows(image)
     if panels:
         return panels
@@ -121,6 +124,106 @@ def detect_panels(image: Image.Image) -> List[Dict[str, Any]]:
             x1 = round((col + 1) * width / cols)
             y1 = round((row + 1) * height / rows)
             panels.append({"id": len(panels) + 1, "bbox": [x0, y0, x1, y1], "confidence": 0.45 if best != (1, 1) else 0.25})
+    return panels
+
+
+def detect_editorial_character_sheet(image: Image.Image) -> List[Dict[str, Any]]:
+    """Detect the fixed 4:5 character-sheet format with a right storyboard grid."""
+    width, height = image.size
+    ratio = width / max(1, height)
+    if not (0.72 <= ratio <= 0.88 and height >= 900 and width >= 700):
+        return []
+
+    gray = np.asarray(image.convert("L")).astype(np.int16)
+    x_edges = np.abs(np.diff(gray, axis=1)).mean(axis=0)
+    y_edges = np.abs(np.diff(gray, axis=0)).mean(axis=1)
+
+    # The fixed format has a dominant vertical split after the hero/profile panel.
+    search_x0 = int(width * 0.34)
+    search_x1 = int(width * 0.50)
+    if search_x1 <= search_x0:
+        return []
+    split_x = int(search_x0 + np.argmax(x_edges[search_x0:search_x1]))
+    if not (width * 0.38 <= split_x <= width * 0.48):
+        split_x = int(width * 0.435)
+
+    # Bottom info strip is separated by a strong horizontal line.
+    search_y0 = int(height * 0.72)
+    search_y1 = int(height * 0.86)
+    footer_y = int(search_y0 + np.argmax(y_edges[search_y0:search_y1]))
+    if not (height * 0.75 <= footer_y <= height * 0.84):
+        footer_y = int(height * 0.805)
+
+    right_x0 = split_x + max(4, int(width * 0.008))
+    right_x1 = int(width * 0.99)
+    grid_y0 = int(height * 0.01)
+    grid_y1 = footer_y - max(4, int(height * 0.004))
+
+    # Current house format: six shots in two columns / three rows. If the user
+    # later generates seven-shot boards, the 7th can be handled as an extra
+    # bottom/right cell by extending this list.
+    cols = 2
+    rows = 3
+    gap_x = max(4, int(width * 0.006))
+    gap_y = max(6, int(height * 0.008))
+    cell_w = (right_x1 - right_x0 - gap_x) / cols
+    cell_h = (grid_y1 - grid_y0 - gap_y * (rows - 1)) / rows
+
+    titles = [
+        "Walk with purpose",
+        "Notice the danger",
+        "Power activated",
+        "Take action",
+        "Confront the threat",
+        "Final stand",
+        "Aftermath",
+    ]
+    shot_types = ["wide", "close-up", "medium", "action medium", "over shoulder", "hero close"]
+    motion = [
+        "the character walks forward with intent through the setting",
+        "the character notices danger and sharpens their focus",
+        "the character activates the defining hero prop as energy builds",
+        "the character takes decisive action with dynamic force",
+        "the character confronts the threat with controlled tension",
+        "the character holds a final heroic stance",
+    ]
+    camera = [
+        "wide shot, slow dolly in",
+        "close-up, sharp push in",
+        "medium close shot, handheld energy",
+        "side angle, dynamic tracking",
+        "over shoulder, tight tension",
+        "low angle static hero shot",
+    ]
+
+    panels: List[Dict[str, Any]] = []
+    for row in range(rows):
+        for col in range(cols):
+            idx = row * cols + col + 1
+            cell_x0 = int(round(right_x0 + col * (cell_w + gap_x)))
+            cell_y0 = int(round(grid_y0 + row * (cell_h + gap_y)))
+            cell_x1 = int(round(cell_x0 + cell_w))
+            cell_y1 = int(round(cell_y0 + cell_h))
+            header_h = max(24, int((cell_y1 - cell_y0) * 0.09))
+            info_h = max(56, int((cell_y1 - cell_y0) * 0.21))
+            pad = max(3, int(width * 0.003))
+            panels.append({
+                "id": idx,
+                "bbox": [
+                    cell_x0 + pad,
+                    cell_y0 + header_h + pad,
+                    cell_x1 - pad,
+                    cell_y1 - info_h - pad,
+                ],
+                "cell_bbox": [cell_x0, cell_y0, cell_x1, cell_y1],
+                "row_bbox": [cell_x0, cell_y0, cell_x1, cell_y1],
+                "confidence": 0.92,
+                "layout": "editorial_character_sheet_4x5",
+                "shot_title": titles[idx - 1],
+                "shot_type_hint": shot_types[idx - 1],
+                "motion_hint": motion[idx - 1],
+                "camera_hint": camera[idx - 1],
+            })
     return panels
 
 
@@ -217,11 +320,19 @@ def parse_scene_prompts(text: str, panels: List[Dict[str, Any]]) -> List[str]:
     lines = [ln.strip(" -\t") for ln in text.splitlines() if len(ln.strip()) > 8]
     prompts = lines[:scene_count]
     while len(prompts) < scene_count:
-        prompts.append(f"Storyboard panel {len(prompts) + 1}: infer subject, action, environment, and mood from the image.")
+        panel = panels[len(prompts)] if len(prompts) < len(panels) else {}
+        title = panel.get("shot_title")
+        motion = panel.get("motion_hint")
+        if title and motion:
+            prompts.append(f"{title}: {motion}. Maintain the same character, wardrobe, prop, and environment shown in the storyboard frame.")
+        else:
+            prompts.append(f"Storyboard panel {len(prompts) + 1}: infer subject, action, environment, and mood from the image.")
     return prompts
 
 
 def _resolution_for_ratio(ratio: str) -> Dict[str, int]:
+    if ratio == "4:5":
+        return {"width": 640, "height": 800}
     if ratio == "16:9":
         return {"width": 768, "height": 432}
     if ratio == "1:1":
@@ -232,6 +343,8 @@ def _resolution_for_ratio(ratio: str) -> Dict[str, int]:
 def _aspect_from_panels(panels: List[Dict[str, Any]], fallback_width: int, fallback_height: int) -> str:
     if not panels:
         return detect_aspect_ratio(fallback_width, fallback_height)
+    if panels[0].get("layout") == "editorial_character_sheet_4x5":
+        return "4:5"
     widths = []
     heights = []
     for panel in panels:
@@ -259,15 +372,18 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
     for idx, panel in enumerate(panels, start=1):
         duration = round(durations[idx - 1], 3)
         prompt_seed = raw_prompts[idx - 1]
+        shot_type = panel.get("shot_type_hint") or ("medium" if idx % 3 else "wide")
+        motion = panel.get("motion_hint") or "natural subject motion with coherent temporal continuity"
+        camera = panel.get("camera_hint") or ("controlled cinematic push-in" if aspect != "9:16" else "handheld iPhone push-in")
         scene = {
             "id": idx,
             "start": round(start, 3),
             "duration": duration,
             "end": round(start + duration, 3),
-            "shot_type": "medium" if idx % 3 else "wide",
+            "shot_type": shot_type,
             "visual_description": prompt_seed,
-            "motion_description": "natural subject motion with coherent temporal continuity",
-            "camera": "controlled cinematic push-in" if aspect != "9:16" else "handheld iPhone push-in",
+            "motion_description": motion,
+            "camera": camera,
             "character_continuity": "preserve the same main character, clothing, props, and visual identity across scenes",
             "prompt": prompt_seed,
             "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
@@ -280,6 +396,8 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
             "transition_to_next": "cut" if idx < len(panels) else "none",
             "source_panel_bbox": panel.get("bbox", [0, 0, width, height]),
             "source_row_bbox": panel.get("row_bbox"),
+            "source_cell_bbox": panel.get("cell_bbox"),
+            "shot_title": panel.get("shot_title"),
         }
         scenes.append(scene)
         start += duration
@@ -298,6 +416,7 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
             "ocr_text": ocr_text,
             "panel_count": len(panels),
             "parser": "OCR + layout heuristic fallback",
+            "layout": panels[0].get("layout") if panels else "unknown",
             "vlm_warning": "No local VLM adapter is enabled in this MVP; using robust fallback parsing.",
         },
     }
