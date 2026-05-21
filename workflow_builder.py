@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-import shutil
 import time
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from .config import LTX_I2V_TEMPLATE, comfy_input_dir, ensure_dir, load_user_ltx_mapping, safe_json_dumps
+from .config import LTX_I2V_TEMPLATE, MODELS_ROOT, ensure_dir, load_user_ltx_mapping, safe_json_dumps
 
 
 def build_placeholder_ltx_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
@@ -67,6 +66,73 @@ def _patch_first_widget(workflow: Dict[str, Any], node_id: int, value: Any) -> N
             return
 
 
+def _find_tokenizer_root() -> Optional[Path]:
+    roots = [
+        Path("N:/pinokio/api/comfy.git/app/models"),
+        MODELS_ROOT,
+    ]
+    for root in roots:
+        if not root.exists():
+            continue
+        matches = list(root.rglob("tokenizer.model"))
+        if matches:
+            return matches[0].parent
+    return None
+
+
+def _disconnect_input(node: Dict[str, Any], input_name: str) -> None:
+    for item in node.get("inputs", []):
+        if item.get("name") == input_name:
+            item["link"] = None
+
+
+def _node_by_id(workflow: Dict[str, Any], node_id: int) -> Optional[Dict[str, Any]]:
+    for node in workflow.get("nodes", []):
+        if int(node.get("id", -1)) == int(node_id):
+            return node
+    return None
+
+
+def _remove_links(workflow: Dict[str, Any], link_ids: List[int]) -> None:
+    remove = set(int(x) for x in link_ids)
+    workflow["links"] = [link for link in workflow.get("links", []) if int(link[0]) not in remove]
+    for node in workflow.get("nodes", []):
+        for inp in node.get("inputs", []):
+            if inp.get("link") in remove:
+                inp["link"] = None
+        for out in node.get("outputs", []):
+            links = out.get("links")
+            if isinstance(links, list):
+                out["links"] = [x for x in links if x not in remove]
+
+
+def _configure_direct_checkpoint_clip(workflow: Dict[str, Any], prompt: str) -> None:
+    """Fallback when Gemma folder with tokenizer.model is missing.
+
+    This bypasses the Gemma prompt enhancer/loader and connects the CLIP output
+    from CheckpointLoaderSimple to CLIPTextEncode directly.
+    """
+    # Remove Gemma loader/enhancer links:
+    # 13924: Gemma CLIP -> CLIPTextEncode, 13925: enhancer -> CLIPTextEncode text,
+    # 13926/13927/13928: inputs to enhancer.
+    _remove_links(workflow, [13924, 13925, 13926, 13927, 13928])
+    clip_encode = _node_by_id(workflow, 5174)
+    checkpoint = _node_by_id(workflow, 5176)
+    if clip_encode:
+        _disconnect_input(clip_encode, "text")
+        for item in clip_encode.get("inputs", []):
+            if item.get("name") == "clip":
+                item["link"] = 200001
+        clip_encode["widgets_values"] = [prompt]
+    if checkpoint:
+        outputs = checkpoint.get("outputs", [])
+        if len(outputs) > 1:
+            links = outputs[1].get("links")
+            outputs[1]["links"] = (links if isinstance(links, list) else []) + [200001]
+    workflow.setdefault("links", []).append([200001, 5176, 1, 5174, 0, "CLIP"])
+    workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "checkpoint_clip_fallback_no_gemma_tokenizer"
+
+
 def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
     if not LTX_I2V_TEMPLATE.exists():
         return build_placeholder_ltx_workflow(scene, project, seed, width, height, fps)
@@ -82,6 +148,7 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
     # Node IDs from ComfyUI-LTXVideo/example_workflows/LTX-2_I2V_Distilled_wLora.json.
     _patch_node(workflow, 5180, [input_name, "image"])
     _patch_node(workflow, 5175, [prompt])
+    _patch_node(workflow, 5174, [prompt])
     _patch_node(workflow, 5184, [int(fps)])
     _patch_node(workflow, 5186, [frames, "fixed"])
     _patch_node(workflow, 5185, [int(width), int(height), 1, 0])
@@ -97,8 +164,11 @@ def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, An
         _patch_first_widget(workflow, 5176, checkpoint)
     if audio_vae:
         _patch_first_widget(workflow, 5188, audio_vae)
-    if gemma_text_encoder or gemma_connector:
+    tokenizer_root = _find_tokenizer_root()
+    if tokenizer_root and (gemma_text_encoder or gemma_connector):
         _patch_node(workflow, 5178, [gemma_text_encoder or "", gemma_connector or "", 1024])
+    else:
+        _configure_direct_checkpoint_clip(workflow, prompt)
     if latent_upscaler:
         _patch_first_widget(workflow, 5210, latent_upscaler)
 
