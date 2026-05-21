@@ -159,9 +159,9 @@ def detect_editorial_character_sheet(image: Image.Image) -> List[Dict[str, Any]]
     grid_y0 = int(height * 0.01)
     grid_y1 = footer_y - max(4, int(height * 0.004))
 
-    # Current house format: six shots in two columns / three rows. If the user
-    # later generates seven-shot boards, the 7th can be handled as an extra
-    # bottom/right cell by extending this list.
+    # House format: right-side storyboard grid. Most boards use 6 shots
+    # (2 columns x 3 rows); 7-shot boards are supported as a 2-column x 4-row
+    # grid when the row geometry indicates enough vertical space.
     cols = 2
     rows = 3
     gap_x = max(4, int(width * 0.006))
@@ -169,23 +169,16 @@ def detect_editorial_character_sheet(image: Image.Image) -> List[Dict[str, Any]]
     cell_w = (right_x1 - right_x0 - gap_x) / cols
     cell_h = (grid_y1 - grid_y0 - gap_y * (rows - 1)) / rows
 
-    titles = [
-        "Walk with purpose",
-        "Notice the danger",
-        "Power activated",
-        "Take action",
-        "Confront the threat",
-        "Final stand",
-        "Aftermath",
-    ]
-    shot_types = ["wide", "close-up", "medium", "action medium", "over shoulder", "hero close"]
+    character_bbox = [int(width * 0.015), int(height * 0.012), max(1, split_x - gap_x), max(1, footer_y - 4)]
+    shot_types = ["wide", "close-up", "medium", "action medium", "over shoulder", "hero close", "detail"]
     motion = [
-        "the character walks forward with intent through the setting",
-        "the character notices danger and sharpens their focus",
-        "the character activates the defining hero prop as energy builds",
-        "the character takes decisive action with dynamic force",
-        "the character confronts the threat with controlled tension",
-        "the character holds a final heroic stance",
+        "the same character begins the scene with a clear establishing action",
+        "the same character reacts to a new threat, clue, or turning point",
+        "the same character activates or reveals the defining hero prop",
+        "the same character takes decisive action with dynamic force",
+        "the same character confronts the central obstacle or opponent",
+        "the same character holds a final heroic or resolved stance",
+        "the same character completes the final beat with a detail or aftermath moment",
     ]
     camera = [
         "wide shot, slow dolly in",
@@ -219,7 +212,8 @@ def detect_editorial_character_sheet(image: Image.Image) -> List[Dict[str, Any]]
                 "row_bbox": [cell_x0, cell_y0, cell_x1, cell_y1],
                 "confidence": 0.92,
                 "layout": "editorial_character_sheet_4x5",
-                "shot_title": titles[idx - 1],
+                "character_reference_bbox": character_bbox,
+                "shot_title": f"Shot {idx:02d}",
                 "shot_type_hint": shot_types[idx - 1],
                 "motion_hint": motion[idx - 1],
                 "camera_hint": camera[idx - 1],
@@ -330,6 +324,19 @@ def parse_scene_prompts(text: str, panels: List[Dict[str, Any]]) -> List[str]:
     return prompts
 
 
+def parse_shot_titles(text: str, scene_count: int) -> List[str]:
+    if not text:
+        return []
+    titles: Dict[int, str] = {}
+    pattern = re.compile(r"\bSHOT\s*(\d{1,2})\s+([^\n\r|]+)", flags=re.I)
+    for match in pattern.finditer(text):
+        idx = int(match.group(1))
+        title = re.sub(r"\s+", " ", match.group(2)).strip(" :-")
+        if 1 <= idx <= scene_count and title:
+            titles[idx] = title[:80]
+    return [titles.get(i, f"Shot {i:02d}") for i in range(1, scene_count + 1)] if titles else []
+
+
 def _resolution_for_ratio(ratio: str) -> Dict[str, int]:
     if ratio == "4:5":
         return {"width": 640, "height": 800}
@@ -366,8 +373,17 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
         panels = panels[:panel_count]
 
     durations = parse_timing(ocr_text, len(panels), settings.default_duration_seconds)
+    shot_titles = parse_shot_titles(ocr_text, len(panels))
+    if shot_titles:
+        for panel, title in zip(panels, shot_titles):
+            panel["shot_title"] = title
     raw_prompts = parse_scene_prompts(ocr_text, panels)
     scenes: List[Dict[str, Any]] = []
+    character_identity_lock = (
+        "Use the left character profile panel as the identity reference. Preserve the exact same face, age, skin texture, "
+        "hair or bald head shape, beard/facial hair, body build, wardrobe, colors, hero prop, and overall silhouette in every scene. "
+        "Do not redesign the character, change clothing, change age, change ethnicity, change facial structure, or swap the prop."
+    )
     start = 0.0
     for idx, panel in enumerate(panels, start=1):
         duration = round(durations[idx - 1], 3)
@@ -384,7 +400,7 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
             "visual_description": prompt_seed,
             "motion_description": motion,
             "camera": camera,
-            "character_continuity": "preserve the same main character, clothing, props, and visual identity across scenes",
+            "character_continuity": character_identity_lock,
             "prompt": prompt_seed,
             "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
             "audio": {
@@ -397,6 +413,7 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
             "source_panel_bbox": panel.get("bbox", [0, 0, width, height]),
             "source_row_bbox": panel.get("row_bbox"),
             "source_cell_bbox": panel.get("cell_bbox"),
+            "character_reference_bbox": panel.get("character_reference_bbox"),
             "shot_title": panel.get("shot_title"),
         }
         scenes.append(scene)
@@ -410,6 +427,8 @@ def build_fallback_scene_plan(image: Image.Image, settings: StoryboardSettings, 
             "resolution": _resolution_for_ratio(aspect),
             "style": f"{settings.fallback_style} TikTok UGC reel style" if aspect == "9:16" else settings.fallback_style,
             "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
+            "character_identity_lock": character_identity_lock,
+            "character_reference_bbox": panels[0].get("character_reference_bbox") if panels else None,
         },
         "scenes": scenes,
         "debug": {

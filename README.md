@@ -72,10 +72,12 @@ For best results, use one fixed 4:5 vertical editorial character-sheet storyboar
 
 - Large character/profile panel on the left.
 - Storyboard grid on the right with 6 shots in two columns and three rows.
-- Each shot has a black header bar and a frame image.
+- Each shot has a black header bar and a frame image. Shot titles may change per project; the parser keeps generic `Shot 01`, `Shot 02`, etc. when OCR cannot read the titles.
 - Footer strip contains wardrobe/gear, personality/skills, and locations/conditions.
 
 This layout is detected as `editorial_character_sheet_4x5`. The parser extracts the right-side shot grid, assigns 6 scenes, uses 2 seconds per scene for a 12-second board, and keeps the overall movie target at 4:5.
+
+Character consistency is treated as a first-class requirement. The left profile panel becomes the identity reference, and every scene prompt includes an identity lock for the same face, age, body build, wardrobe, colors, hero prop, and silhouette.
 
 If CUDA runs out of memory, reduce resolution, reduce frames/duration, close other GPU applications, and render one scene at a time.
 
