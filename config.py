@@ -10,6 +10,7 @@ from typing import Any, Dict
 PACKAGE_NAME = "ComfyUI-Storyboard2Movie-OneClick"
 MODELS_ROOT = Path("N:/KI_Daten/models")
 LTX_I2V_TEMPLATE = Path("N:/KI_Daten/custom_nodes/ComfyUI-LTXVideo/example_workflows/LTX-2_I2V_Distilled_wLora.json")
+MRXIN_LTX23_I2V_TEMPLATE = Path("C:/Users/uwe/Downloads/MrXin LTX 2.3 I2V.json")
 COMFY_INPUT_FALLBACK = Path("N:/pinokio/api/comfy.git/app/input")
 DEFAULT_NEGATIVE_PROMPT = (
     "low quality, blurry, flicker, jitter, distorted face, warped hands, "
@@ -102,14 +103,18 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
             with candidate.open("r", encoding="utf-8") as f:
                 return json.load(f)
     return {
-        "template_mode": "ltxvideo_i2v_distilled_template",
+        "template_mode": "mrxin_ltx23_i2v_preferred",
         "template_path": str(LTX_I2V_TEMPLATE),
+        "mrxin_template_path": str(MRXIN_LTX23_I2V_TEMPLATE),
         "models_root": str(MODELS_ROOT),
         "checkpoint": "LTX23/ltx-2.3-22b-dev-fp8.safetensors",
         "audio_vae": "LTX23/ltx-2.3-22b-distilled_audio_vae.safetensors",
         "text_encoder_mode": "native_ltxv_cpu",
         "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
         "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
+        "mrxin_native_ltxv_clip": "ltx2\\gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+        "mrxin_native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
+        "mrxin_clip_device": "default",
         "image_strength": 0.72,
         "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
         "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",

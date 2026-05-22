@@ -10,6 +10,7 @@ This package does not reimplement LTX-2.3 Video. It integrates around existing C
 - Produces a JSON scene plan with durations, prompts, camera notes, audio cues, captions, and transitions.
 - Enhances each scene into concise LTX-2.3 video prompts using a chronological shot formula: subject, first visible moment, next movement, ending pose, camera, lighting, style, motion, and audio.
 - Exports per-scene workflow JSON files under `outputs/storyboard_movie/<name>/workflows/`.
+- Preferentially patches the tested local `MrXin LTX 2.3 I2V.json` workflow when it is available, including scene start frame, prompt, negative prompt, duration, seed, resolution, fps, and output prefix.
 - Creates silent or placeholder FFmpeg audio and SRT captions.
 - Assembles rendered scene MP4s into a final H.264/AAC MP4.
 
@@ -103,7 +104,13 @@ Load Image -> Storyboard Image Analyzer -> Storyboard Scene Prompt Builder -> LT
 
 The first run is expected to create the plan, prompt list, audio/SRT placeholders, and per-scene LTX workflow JSON files. The final MP4 can only be assembled after the generated LTX scene workflows have been rendered into the expected `scene_001.mp4`, `scene_002.mp4`, etc. files.
 
-For the installed Windows/NVIDIA setup used by this package, scene workflows are patched from:
+For the installed Windows/NVIDIA setup used by this package, scene workflows first try to patch the tested MrXin I2V workflow:
+
+```text
+C:\Users\uwe\Downloads\MrXin LTX 2.3 I2V.json
+```
+
+If that file is not present, the generator falls back to the ComfyUI-LTXVideo distilled I2V template:
 
 ```text
 N:\KI_Daten\custom_nodes\ComfyUI-LTXVideo\example_workflows\LTX-2_I2V_Distilled_wLora.json
@@ -143,7 +150,7 @@ outputs/storyboard_movie/<output_name>/final/<output_name>_final.mp4
 
 ## LTX Workflow Mapping
 
-Generated scene workflows are patched from the installed ComfyUI-LTXVideo I2V distilled template when it is found. If the template is missing, the package falls back to metadata-only workflows.
+Generated scene workflows are patched from the tested MrXin LTX 2.3 I2V workflow when it is found. If it is missing, the package falls back to the installed ComfyUI-LTXVideo I2V distilled template, then to metadata-only workflows.
 
 For advanced automation, create `ltx_node_mapping.json` next to `config.py` or point `STORYBOARD2MOVIE_LTX_MAPPING` to a mapping file. The code is structured so this can be replaced with a concrete template generator for your exact LTXVideo installation.
 
@@ -151,9 +158,13 @@ Default 16GB-safe mapping:
 
 ```json
 {
+  "template_mode": "mrxin_ltx23_i2v_preferred",
+  "mrxin_template_path": "C:\\Users\\uwe\\Downloads\\MrXin LTX 2.3 I2V.json",
   "text_encoder_mode": "native_ltxv_cpu",
   "native_ltxv_clip": "gemma_3_12B_it_fp4_mixed.safetensors",
   "native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
+  "mrxin_native_ltxv_clip": "ltx2\\gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+  "mrxin_native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
   "image_strength": 0.72
 }
 ```

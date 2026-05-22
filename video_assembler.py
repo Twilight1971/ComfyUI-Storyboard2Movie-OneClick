@@ -15,13 +15,23 @@ def parse_scene_paths(scene_video_paths_json: str) -> List[str]:
     return [str(p) for p in data.get("scene_video_paths", [])]
 
 
+def _resolve_rendered_scene(path: str) -> str | None:
+    candidate = Path(path)
+    if candidate.exists():
+        return str(candidate)
+    matches = sorted(candidate.parent.glob(f"{candidate.stem}_*.mp4"))
+    if matches:
+        return str(matches[-1])
+    return None
+
+
 def assemble_movie(scene_video_paths_json: str, audio_mix_path: str, output_path: str | Path, fps: int, target_width: int, target_height: int, transition_mode: str = "hard_cut", burn_srt: bool = False, srt_path: str = "") -> Tuple[str, str]:
     ok, ff = check_ffmpeg_available()
     if not ok:
         return "", ff
     paths = parse_scene_paths(scene_video_paths_json)
-    existing = [p for p in paths if Path(p).exists()]
-    missing = [p for p in paths if not Path(p).exists()]
+    existing = [resolved for p in paths if (resolved := _resolve_rendered_scene(p))]
+    missing = [p for p in paths if not _resolve_rendered_scene(p)]
     if not existing:
         return "", "No rendered scene clips were found. Render the generated LTX scene workflows first, then run the assembler."
     ensure_dir(Path(output_path).parent)

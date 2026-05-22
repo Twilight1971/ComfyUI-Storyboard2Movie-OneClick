@@ -235,6 +235,7 @@ class LTXStoryboardMovieOrchestrator:
             workflow_report,
             frame_report,
             f"Expected rendered scene clips:\n" + "\n".join(expected_scene_paths),
+            "VideoHelperSuite suffixes such as scene_001_00001_.mp4 are accepted automatically by the assembler.",
             audio_report,
             assembly_report,
             api_report,

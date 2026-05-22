@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import LTX_I2V_TEMPLATE, MODELS_ROOT, ensure_dir, load_user_ltx_mapping, safe_json_dumps
+from .config import LTX_I2V_TEMPLATE, MODELS_ROOT, MRXIN_LTX23_I2V_TEMPLATE, ensure_dir, load_user_ltx_mapping, safe_json_dumps
 
 
 def build_placeholder_ltx_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
@@ -64,6 +64,26 @@ def _patch_first_widget(workflow: Dict[str, Any], node_id: int, value: Any) -> N
                 widgets = [value]
             node["widgets_values"] = widgets
             return
+
+
+def _patch_widget_dict(workflow: Dict[str, Any], node_id: int, updates: Dict[str, Any]) -> None:
+    node = _node_by_id(workflow, node_id)
+    if not node:
+        return
+    widgets = node.get("widgets_values")
+    if not isinstance(widgets, dict):
+        return
+    patched = dict(widgets)
+    patched.update(updates)
+    preview = patched.get("videopreview")
+    if isinstance(preview, dict):
+        preview = dict(preview)
+        params = dict(preview.get("params") or {})
+        if "frame_rate" in updates:
+            params["frame_rate"] = updates["frame_rate"]
+        preview["params"] = params
+        patched["videopreview"] = preview
+    node["widgets_values"] = patched
 
 
 def _find_tokenizer_root() -> Optional[Path]:
@@ -185,12 +205,71 @@ def _configure_native_ltxv_cpu_clip(workflow: Dict[str, Any], prompt: str, clip_
     workflow.setdefault("extra", {})["storyboard2movie_text_encoder_mode"] = "native_ltxv_cpu"
 
 
+def _resolve_mrxin_template(mapping: Dict[str, Any]) -> Optional[Path]:
+    configured = str(mapping.get("mrxin_template_path") or "").strip()
+    candidates = [Path(configured)] if configured else []
+    candidates.append(MRXIN_LTX23_I2V_TEMPLATE)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _patch_mrxin_dual_clip(workflow: Dict[str, Any], mapping: Dict[str, Any]) -> None:
+    clip_name = mapping.get("mrxin_native_ltxv_clip") or mapping.get("native_ltxv_clip")
+    projection_name = mapping.get("mrxin_native_ltxv_projection") or mapping.get("native_ltxv_projection")
+    if clip_name and projection_name:
+        _patch_node(workflow, 189, [clip_name, projection_name, "ltxv", mapping.get("mrxin_clip_device", "default")])
+
+
+def build_mrxin_ltx23_i2v_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int, template_path: Path) -> Dict[str, Any]:
+    workflow = json.loads(template_path.read_text(encoding="utf-8"))
+    mapping = load_user_ltx_mapping()
+    scene_id = int(scene.get("id", 1))
+    duration = max(1, int(round(float(scene.get("duration", 2.0)))))
+    prompt = scene.get("prompt", "")
+    negative = scene.get("negative_prompt") or project.get("negative_prompt", "")
+    input_name = scene.get("start_frame_input_name") or scene.get("start_frame_path") or "storyboard.png"
+    output_prefix = f"storyboard_movie/{project.get('output_name', 'movieclip')}/scenes/scene_{scene_id:03d}"
+
+    # Node IDs from the tested local "MrXin LTX 2.3 I2V" workflow.
+    _patch_node(workflow, 15, [input_name, "image"])
+    _patch_node(workflow, 28, [prompt])
+    _patch_node(workflow, 29, [negative])
+    _patch_node(workflow, 18, [duration, duration, 0])
+    _patch_node(workflow, 19, [int(width), int(width), 0])
+    _patch_node(workflow, 181, [int(height), int(height), 0])
+    _patch_node(workflow, 123, [int(seed) + scene_id - 1, "fixed"])
+    _patch_node(workflow, 125, [int(seed) + scene_id - 1, "", "", ""])
+    _patch_widget_dict(workflow, 59, {"frame_rate": int(fps), "filename_prefix": f"{output_prefix}_first", "save_output": True})
+    _patch_widget_dict(workflow, 61, {"frame_rate": int(fps), "filename_prefix": output_prefix, "save_output": True})
+    _patch_mrxin_dual_clip(workflow, mapping)
+
+    workflow.setdefault("extra", {})["storyboard2movie"] = {
+        "template": "mrxin_ltx23_i2v",
+        "template_path": str(template_path),
+        "scene_id": scene_id,
+        "duration": duration,
+        "fps": fps,
+        "width": width,
+        "height": height,
+        "start_frame": input_name,
+        "expected_output_prefix": output_prefix,
+    }
+    return workflow
+
+
 def build_ltx_i2v_template_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int) -> Dict[str, Any]:
+    mapping = load_user_ltx_mapping()
+    template_mode = str(mapping.get("template_mode", "")).lower().strip()
+    mrxin_template = _resolve_mrxin_template(mapping)
+    if mrxin_template and template_mode in {"", "auto", "mrxin_ltx23_i2v", "mrxin_ltx23_i2v_preferred"}:
+        return build_mrxin_ltx23_i2v_workflow(scene, project, seed, width, height, fps, mrxin_template)
+
     if not LTX_I2V_TEMPLATE.exists():
         return build_placeholder_ltx_workflow(scene, project, seed, width, height, fps)
 
     workflow = json.loads(LTX_I2V_TEMPLATE.read_text(encoding="utf-8"))
-    mapping = load_user_ltx_mapping()
     scene_id = int(scene.get("id", 1))
     frames = _valid_ltx_frames(float(scene.get("duration", 3.0)), int(fps))
     prompt = scene.get("prompt", "")

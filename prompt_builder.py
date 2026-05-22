@@ -78,7 +78,7 @@ def _subject_line(scene: Dict[str, Any], project: Dict[str, Any]) -> str:
     shot_title = _clean(scene.get("shot_title"), f"Shot {scene.get('id', 1):02d}")
     shot_type = _clean(scene.get("shot_type"), "cinematic")
     return (
-        f"A consistent main character from {shot_title} stands in {environment}, "
+        f"The exact same main character from {shot_title} stands in {environment}, "
         f"wearing {wardrobe}, holding or interacting with {prop}. "
         f"The framing is a {shot_type} shot based on the provided first frame."
     )
@@ -102,7 +102,7 @@ def build_scene_prompt(scene: Dict[str, Any], project: Dict[str, Any], global_st
         project.get("character_identity_lock"),
         "same character identity, same wardrobe, same face, same hero prop",
     )
-    continuity = "Keep the same face, age, body shape, wardrobe, prop, colors, and background from the first frame." if keep_character_consistency else "Keep object positions and scene geography consistent."
+    continuity = "Identity: preserve the exact same face, age, skin texture, hair or bald head shape, facial hair, body build, wardrobe, colors, and hero prop from the character reference." if keep_character_consistency else "Keep object positions and scene geography consistent."
     parts = [
         f"Scene {scene_id}, {duration:g} seconds.",
         _sentence(subject),
@@ -110,12 +110,12 @@ def build_scene_prompt(scene: Dict[str, Any], project: Dict[str, Any], global_st
         f"Over the next few seconds, {action}, while the background stays in the same location and only subtle environmental motion occurs.",
         f"The action ends with {end_pose}.",
         f"Camera: {camera}, keeping the subject clearly framed." if add_camera_language else "Camera: locked-off frame, keeping the subject clearly framed.",
+        continuity,
         f"Lighting: {lighting}.",
         f"Style: {style}.",
         _audio_line(scene),
-        continuity,
         "For image-to-video, preserve the first frame composition; animate only the described motion. Keep the scene coherent, physically realistic, and consistent throughout.",
-        f"Identity lock: {identity_lock}" if keep_character_consistency else "",
+        f"Identity lock: {identity_lock}" if keep_character_consistency and len(str(identity_lock)) < 220 else "",
     ]
     prompt = " ".join(p.strip() for p in parts if p and p.strip())
     return _truncate_at_sentence(prompt, 1100)
