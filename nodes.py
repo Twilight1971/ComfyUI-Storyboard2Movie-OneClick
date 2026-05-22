@@ -81,6 +81,13 @@ def _refine_image_window(image: Image.Image, cell_bbox: List[float], scale: floa
     if not col_segment:
         return None
     x0, x1 = col_segment
+    # Once the image width is known, prefer a real 16:9 image window from the
+    # upper part of the visual segment. The lower white storyboard notes can
+    # contain enough black text to look "active", so density alone may keep
+    # those rows. The house format's shot art is 16:9.
+    target_h = int(round((x1 - x0) * 9 / 16))
+    if target_h > 0 and y1 - y0 > target_h:
+        y1 = y0 + target_h
     pad = max(2, int(round(2 * scale)))
     return (
         max(0, cx0 + x0 + pad),

@@ -351,7 +351,7 @@ def _aspect_from_panels(panels: List[Dict[str, Any]], fallback_width: int, fallb
     if not panels:
         return detect_aspect_ratio(fallback_width, fallback_height)
     if panels[0].get("layout") == "editorial_character_sheet_4x5":
-        return "4:5"
+        return "16:9"
     widths = []
     heights = []
     for panel in panels:
