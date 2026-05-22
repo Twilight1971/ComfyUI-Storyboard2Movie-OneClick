@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from statistics import median
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from PIL import Image, ImageOps
 
 from .audio_builder import build_audio_timeline
@@ -26,6 +27,81 @@ def _upscale_source_image(image: Image.Image, mode: str) -> Tuple[Image.Image, f
     return upscaled, float(factor), f"startframe source upscaled with {normalized}: {image.width}x{image.height} -> {upscaled.width}x{upscaled.height}"
 
 
+def _clamp_bbox(bbox: List[float], image: Image.Image, scale: float = 1.0) -> Tuple[int, int, int, int]:
+    x0, y0, x1, y1 = [int(round(float(v) * scale)) for v in bbox]
+    x0 = max(0, min(image.width - 1, x0))
+    y0 = max(0, min(image.height - 1, y0))
+    x1 = max(x0 + 1, min(image.width, x1))
+    y1 = max(y0 + 1, min(image.height, y1))
+    return x0, y0, x1, y1
+
+
+def _largest_segment(mask: np.ndarray, min_len: int) -> Optional[Tuple[int, int]]:
+    best: Optional[Tuple[int, int]] = None
+    start: Optional[int] = None
+    values = [bool(v) for v in mask.tolist()]
+    for idx, active in enumerate(values + [False]):
+        if active and start is None:
+            start = idx
+        elif not active and start is not None:
+            if idx - start >= min_len and (best is None or idx - start > best[1] - best[0]):
+                best = (start, idx)
+            start = None
+    return best
+
+
+def _refine_image_window(image: Image.Image, cell_bbox: List[float], scale: float) -> Optional[Tuple[int, int, int, int]]:
+    """Find the actual storyboard picture inside a designed cell.
+
+    The fixed 4:5 board has black shot headers and white camera/music/sound
+    boxes. This pass searches for the largest non-white image region and trims
+    those text areas before the frame is resized for image-to-video.
+    """
+    cx0, cy0, cx1, cy1 = _clamp_bbox(cell_bbox, image, scale)
+    if cx1 - cx0 < 48 or cy1 - cy0 < 48:
+        return None
+    gray = np.asarray(image.crop((cx0, cy0, cx1, cy1)).convert("L"))
+    dark = gray < 245
+    black = gray < 35
+    row_dark = dark.mean(axis=1)
+    row_black = black.mean(axis=1)
+    start_scan = max(1, int(gray.shape[0] * 0.06))
+    row_mask = (row_dark > 0.22) & (row_black < 0.72)
+    row_mask[:start_scan] = False
+    segment = _largest_segment(row_mask, max(24, int(gray.shape[0] * 0.16)))
+    if not segment:
+        return None
+
+    y0, y1 = segment
+    region = gray[y0:y1, :]
+    col_dark = (region < 245).mean(axis=0)
+    col_black = (region < 35).mean(axis=0)
+    col_mask = (col_dark > 0.18) & (col_black < 0.82)
+    col_segment = _largest_segment(col_mask, max(32, int(gray.shape[1] * 0.45)))
+    if not col_segment:
+        return None
+    x0, x1 = col_segment
+    pad = max(2, int(round(2 * scale)))
+    return (
+        max(0, cx0 + x0 + pad),
+        max(0, cy0 + y0 + pad),
+        min(image.width, cx0 + x1 - pad),
+        min(image.height, cy0 + y1 - pad),
+    )
+
+
+def _scene_crop_bbox(image: Image.Image, scene: Dict[str, Any], scale: float) -> Optional[Tuple[int, int, int, int, str]]:
+    cell_bbox = scene.get("source_cell_bbox")
+    if cell_bbox and len(cell_bbox) == 4:
+        refined = _refine_image_window(image, cell_bbox, scale)
+        if refined:
+            return (*refined, "refined_from_cell")
+    bbox = scene.get("source_panel_bbox")
+    if bbox and len(bbox) == 4:
+        return (*_clamp_bbox(bbox, image, scale), "source_panel_bbox")
+    return None
+
+
 def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base: Path, output_name: str, width: int, height: int, upscale_mode: str = "off") -> str:
     if storyboard_image is None:
         return "No storyboard image connected to orchestrator first_frame_image; start frames were not exported."
@@ -35,15 +111,11 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
     input_root = ensure_dir(comfy_input_dir() / "storyboard2movie" / output_name)
     reports = [upscale_report]
     for idx, scene in enumerate(plan.get("scenes", []), start=1):
-        bbox = scene.get("source_panel_bbox")
-        if not bbox or len(bbox) != 4:
+        crop_bbox = _scene_crop_bbox(pil, scene, bbox_scale)
+        if not crop_bbox:
             reports.append(f"scene_{idx:03d}: missing source_panel_bbox")
             continue
-        x0, y0, x1, y1 = [int(round(float(v) * bbox_scale)) for v in bbox]
-        x0 = max(0, min(pil.width - 1, x0))
-        y0 = max(0, min(pil.height - 1, y0))
-        x1 = max(x0 + 1, min(pil.width, x1))
-        y1 = max(y0 + 1, min(pil.height, y1))
+        x0, y0, x1, y1, crop_method = crop_bbox
         crop = pil.crop((x0, y0, x1, y1)).convert("RGB")
         canvas = ImageOps.fit(crop, (int(width), int(height)), method=Image.Resampling.LANCZOS, centering=(0.5, 0.45))
         filename = f"scene_{idx:03d}_start.png"
@@ -54,18 +126,16 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
         rel_name = f"storyboard2movie/{output_name}/{filename}"
         scene["start_frame_path"] = str(output_path)
         scene["start_frame_input_name"] = rel_name
-        reports.append(f"scene_{idx:03d}: {rel_name}")
+        scene["start_frame_crop_bbox"] = [x0, y0, x1, y1]
+        scene["start_frame_crop_method"] = crop_method
+        reports.append(f"scene_{idx:03d}: {rel_name} ({crop_method}, crop={x0},{y0},{x1},{y1})")
 
     plan.setdefault("project", {})["startframe_upscale_mode"] = upscale_mode
     plan.setdefault("project", {})["startframe_upscale_factor"] = bbox_scale
 
     ref_bbox = plan.get("project", {}).get("character_reference_bbox")
     if ref_bbox and len(ref_bbox) == 4:
-        x0, y0, x1, y1 = [int(round(float(v) * bbox_scale)) for v in ref_bbox]
-        x0 = max(0, min(pil.width - 1, x0))
-        y0 = max(0, min(pil.height - 1, y0))
-        x1 = max(x0 + 1, min(pil.width, x1))
-        y1 = max(y0 + 1, min(pil.height, y1))
+        x0, y0, x1, y1 = _clamp_bbox(ref_bbox, pil, bbox_scale)
         ref = pil.crop((x0, y0, x1, y1)).convert("RGB")
         ref_out = frames_dir / "character_reference.png"
         ref_in = input_root / "character_reference.png"
