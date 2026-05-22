@@ -115,6 +115,7 @@ def load_user_ltx_mapping() -> Dict[str, Any]:
         "mrxin_native_ltxv_clip": "ltx2\\gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
         "mrxin_native_ltxv_projection": "ltx2\\ltx-2.3_text_projection_bf16.safetensors",
         "mrxin_clip_device": "default",
+        "mrxin_force_exact_output_resolution": True,
         "image_strength": 0.72,
         "gemma_text_encoder": "gemma-3-12b-it-qat-q4_0-unquantized\\model-00001-of-00005.safetensors",
         "gemma_connector": "LTX23\\ltx-2.3-22b-dev-fp8.safetensors",

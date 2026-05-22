@@ -222,6 +222,83 @@ def _patch_mrxin_dual_clip(workflow: Dict[str, Any], mapping: Dict[str, Any]) ->
         _patch_node(workflow, 189, [clip_name, projection_name, "ltxv", mapping.get("mrxin_clip_device", "default")])
 
 
+def _set_input_link(workflow: Dict[str, Any], node_id: int, input_name: str, link_id: int) -> None:
+    node = _node_by_id(workflow, node_id)
+    if not node:
+        return
+    for item in node.get("inputs", []):
+        if item.get("name") == input_name:
+            item["link"] = link_id
+            return
+
+
+def _append_output_link(workflow: Dict[str, Any], node_id: int, output_index: int, link_id: int) -> None:
+    node = _node_by_id(workflow, node_id)
+    if not node:
+        return
+    outputs = node.get("outputs", [])
+    if output_index >= len(outputs):
+        return
+    links = outputs[output_index].get("links")
+    if not isinstance(links, list):
+        links = []
+    if link_id not in links:
+        links.append(link_id)
+    outputs[output_index]["links"] = links
+
+
+def _add_mrxin_exact_output_scale(workflow: Dict[str, Any], width: int, height: int) -> None:
+    """Force MrXin final/first pass video saves to the requested dimensions.
+
+    The MrXin sampler's final pass can emit internal LTX-friendly dimensions
+    such as 1280x704. Scaling directly before VHS_VideoCombine keeps the
+    generated workflow output predictable for the downstream assembler.
+    """
+    _remove_links(workflow, [359, 360])
+    workflow.setdefault("nodes", []).extend(
+        [
+            {
+                "id": 910001,
+                "type": "ImageScale",
+                "pos": [1780, 520],
+                "size": [315, 130],
+                "flags": {},
+                "order": 1000,
+                "mode": 0,
+                "inputs": [{"name": "image", "type": "IMAGE", "link": 910101}],
+                "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [910102], "slot_index": 0}],
+                "properties": {"Node name for S&R": "ImageScale"},
+                "widgets_values": ["lanczos", int(width), int(height), "center"],
+            },
+            {
+                "id": 910002,
+                "type": "ImageScale",
+                "pos": [1780, 700],
+                "size": [315, 130],
+                "flags": {},
+                "order": 1001,
+                "mode": 0,
+                "inputs": [{"name": "image", "type": "IMAGE", "link": 910103}],
+                "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [910104], "slot_index": 0}],
+                "properties": {"Node name for S&R": "ImageScale"},
+                "widgets_values": ["lanczos", int(width), int(height), "center"],
+            },
+        ]
+    )
+    workflow.setdefault("links", []).extend(
+        [
+            [910101, 26, 2, 910001, 0, "IMAGE"],
+            [910102, 910001, 0, 59, 0, "IMAGE"],
+            [910103, 26, 4, 910002, 0, "IMAGE"],
+            [910104, 910002, 0, 61, 0, "IMAGE"],
+        ]
+    )
+    _append_output_link(workflow, 26, 2, 910101)
+    _append_output_link(workflow, 26, 4, 910103)
+    _set_input_link(workflow, 59, "images", 910102)
+    _set_input_link(workflow, 61, "images", 910104)
+
+
 def build_mrxin_ltx23_i2v_workflow(scene: Dict[str, Any], project: Dict[str, Any], seed: int, width: int, height: int, fps: int, template_path: Path) -> Dict[str, Any]:
     workflow = json.loads(template_path.read_text(encoding="utf-8"))
     mapping = load_user_ltx_mapping()
@@ -244,6 +321,8 @@ def build_mrxin_ltx23_i2v_workflow(scene: Dict[str, Any], project: Dict[str, Any
     _patch_widget_dict(workflow, 59, {"frame_rate": int(fps), "filename_prefix": f"{output_prefix}_first", "save_output": True})
     _patch_widget_dict(workflow, 61, {"frame_rate": int(fps), "filename_prefix": output_prefix, "save_output": True})
     _patch_mrxin_dual_clip(workflow, mapping)
+    if bool(mapping.get("mrxin_force_exact_output_resolution", True)):
+        _add_mrxin_exact_output_scale(workflow, int(width), int(height))
 
     workflow.setdefault("extra", {})["storyboard2movie"] = {
         "template": "mrxin_ltx23_i2v",
@@ -253,6 +332,7 @@ def build_mrxin_ltx23_i2v_workflow(scene: Dict[str, Any], project: Dict[str, Any
         "fps": fps,
         "width": width,
         "height": height,
+        "forced_output_resolution": bool(mapping.get("mrxin_force_exact_output_resolution", True)),
         "start_frame": input_name,
         "expected_output_prefix": output_prefix,
     }

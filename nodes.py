@@ -124,6 +124,8 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
             continue
         x0, y0, x1, y1, crop_method = crop_bbox
         crop = pil.crop((x0, y0, x1, y1)).convert("RGB")
+        source_crop_path = frames_dir / f"scene_{idx:03d}_source_crop.png"
+        crop.save(source_crop_path)
         canvas = ImageOps.fit(crop, (int(width), int(height)), method=Image.Resampling.LANCZOS, centering=(0.5, 0.45))
         filename = f"scene_{idx:03d}_start.png"
         output_path = frames_dir / filename
@@ -133,6 +135,7 @@ def _export_scene_start_frames(plan: Dict[str, Any], storyboard_image: Any, base
         rel_name = f"storyboard2movie/{output_name}/{filename}"
         scene["start_frame_path"] = str(output_path)
         scene["start_frame_input_name"] = rel_name
+        scene["source_crop_path"] = str(source_crop_path)
         scene["start_frame_crop_bbox"] = [x0, y0, x1, y1]
         scene["start_frame_crop_method"] = crop_method
         reports.append(f"scene_{idx:03d}: {rel_name} ({crop_method}, crop={x0},{y0},{x1},{y1})")

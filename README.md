@@ -119,11 +119,12 @@ N:\KI_Daten\custom_nodes\ComfyUI-LTXVideo\example_workflows\LTX-2_I2V_Distilled_
 The orchestrator also crops every storyboard shot into a real image-to-video start frame and writes it both to the project output folder and to ComfyUI input:
 
 ```text
+output\storyboard_movie\<output_name>\frames\scene_001_source_crop.png
 output\storyboard_movie\<output_name>\frames\scene_001_start.png
 input\storyboard2movie\<output_name>\scene_001_start.png
 ```
 
-Each generated LTX scene workflow uses its matching start frame through `LoadImage`.
+The `source_crop` file keeps the high-resolution crop from the upscaled storyboard source. The `start` file is resized to the render target, such as `768x432` for 16:9 `4060ti_safe`, and each generated LTX scene workflow uses that matching start frame through `LoadImage`.
 
 The orchestrator writes:
 
