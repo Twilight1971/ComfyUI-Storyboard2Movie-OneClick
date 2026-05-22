@@ -8,7 +8,7 @@ This package does not reimplement LTX-2.3 Video. It integrates around existing C
 
 - Analyzes one storyboard image using OCR when available, with layout heuristics when OCR/VLM tools are missing.
 - Produces a JSON scene plan with durations, prompts, camera notes, audio cues, captions, and transitions.
-- Enhances each scene into concise LTX-2.3 video prompts.
+- Enhances each scene into concise LTX-2.3 video prompts using a chronological shot formula: subject, first visible moment, next movement, ending pose, camera, lighting, style, motion, and audio.
 - Exports per-scene workflow JSON files under `outputs/storyboard_movie/<name>/workflows/`.
 - Creates silent or placeholder FFmpeg audio and SRT captions.
 - Assembles rendered scene MP4s into a final H.264/AAC MP4.
